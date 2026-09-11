@@ -1,0 +1,1392 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>オンライン会議 背景ジェネレーター</title>
+<style>
+  :root{
+    --bg:#f4f5f7; --panel:#ffffff; --line:#dfe3e8; --text:#1f2933; --muted:#6b7684;
+    --accent:#1f5fa8; --accent-weak:#e8f0f9; --warn:#b4541a; --warn-bg:#fdf1e7;
+    --radius:8px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",YuGothic,Meiryo,"Noto Sans JP",sans-serif;
+    font-size:14px;line-height:1.6}
+  header{background:var(--panel);border-bottom:1px solid var(--line);padding:12px 20px;
+    display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;position:sticky;top:0;z-index:20}
+  header h1{font-size:16px;margin:0;font-weight:700}
+  header .note{font-size:12px;color:var(--muted)}
+  .wrap{display:grid;grid-template-columns:minmax(320px,400px) 1fr;gap:16px;padding:16px;align-items:start}
+  @media (max-width:980px){ .wrap{grid-template-columns:1fr} }
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-bottom:12px}
+  .card > h2{font-size:13px;margin:0 0 10px;font-weight:700;letter-spacing:.04em;color:var(--muted)}
+  .right{position:sticky;top:64px}
+  @media (max-width:980px){ .right{position:static} }
+  label{display:block;font-size:12px;color:var(--muted);margin:8px 0 3px}
+  input[type=text],input[type=url],textarea,select{width:100%;padding:6px 8px;border:1px solid var(--line);
+    border-radius:6px;font:inherit;font-size:13px;background:#fff;color:inherit}
+  textarea{resize:vertical;min-height:54px}
+  input[type=range]{width:100%}
+  input[type=color]{width:44px;height:28px;padding:0;border:1px solid var(--line);border-radius:6px;background:#fff}
+  input[type=file]{font-size:12px;width:100%}
+  .row{display:flex;gap:8px;align-items:center}
+  .row > *{flex:1}
+  .row.tight > *{flex:none}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .val{font-variant-numeric:tabular-nums;color:var(--muted);font-size:11px;min-width:44px;text-align:right;flex:none}
+  button{font:inherit;font-size:13px;padding:7px 12px;border:1px solid var(--line);background:#fff;
+    border-radius:6px;cursor:pointer;color:inherit}
+  button:hover{background:#f0f3f7}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+  button.primary:hover{filter:brightness(1.08)}
+  button.sm{padding:4px 8px;font-size:12px}
+  .layouts{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+  .layouts button{padding:6px 2px;font-size:10.5px;line-height:1.35;white-space:nowrap}
+  .layouts button[aria-pressed=true]{background:var(--accent-weak);border-color:var(--accent);color:var(--accent);font-weight:700}
+  .segmented{display:flex;gap:0}
+  .segmented button{border-radius:0;flex:1}
+  .segmented button:first-child{border-radius:6px 0 0 6px}
+  .segmented button:last-child{border-radius:0 6px 6px 0;border-left:0}
+  .segmented button[aria-pressed=true]{background:var(--accent-weak);border-color:var(--accent);color:var(--accent);font-weight:700}
+  .checks{display:flex;flex-wrap:wrap;gap:10px;font-size:12px}
+  .checks label{display:inline-flex;align-items:center;gap:4px;margin:0;color:var(--text)}
+  .checks input{margin:0}
+  #stage{position:relative;width:100%;background:#2a2f36;border-radius:var(--radius);overflow:hidden;
+    aspect-ratio:16/9;touch-action:none}
+  #preview{display:block;width:100%;height:100%;cursor:grab}
+  #preview.dragging{cursor:grabbing}
+  .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}
+  .tile figcaption{font-size:11px;color:var(--muted);margin-top:3px;text-align:center}
+  .tile canvas{width:100%;background:#2a2f36;border-radius:6px;display:block}
+  .hint{font-size:11.5px;color:var(--muted);margin:6px 0 0}
+  .warn{background:var(--warn-bg);border:1px solid #f0d2b8;color:var(--warn);padding:8px 10px;
+    border-radius:6px;font-size:12px;margin-top:8px}
+  .legend{display:flex;flex-wrap:wrap;gap:12px;font-size:11px;color:var(--muted);margin-top:8px}
+  .legend span{display:inline-flex;align-items:center;gap:4px}
+  .sw{width:12px;height:12px;border-radius:3px;display:inline-block;border:1px solid rgba(0,0,0,.15)}
+  details{border-top:1px solid var(--line);padding-top:8px;margin-top:10px}
+  details summary{cursor:pointer;font-size:12px;color:var(--muted);font-weight:700}
+  details .body{padding-top:8px}
+  details ol{padding-left:1.2em;margin:6px 0;font-size:12px;color:var(--muted)}
+  .swatches{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .swatches button{width:26px;height:26px;padding:0;border-radius:50%;border:1px solid rgba(0,0,0,.15)}
+  .sizeinfo{font-size:12px;color:var(--muted);margin-top:6px}
+  .modebar{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+  body.namemode .tplonly{display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>オンライン会議 背景ジェネレーター</h1>
+  <span class="note">画像もテキストも外部に送信されません（すべてブラウザ内で処理）</span>
+</header>
+
+<div class="wrap">
+  <!-- ============ 入力パネル ============ -->
+  <div class="left">
+    <div class="card">
+      <div class="modebar">
+        <div class="segmented" style="flex:1">
+          <button id="modeFull" aria-pressed="true">テンプレート編集</button>
+          <button id="modeName" aria-pressed="false">氏名の差し替えのみ</button>
+        </div>
+      </div>
+      <p class="hint" id="modeHint">会社ロゴ・色・レイアウトを含めて自由に編集できます。</p>
+      <div class="row" style="margin-top:8px">
+        <button id="tplSave">テンプレートを書き出す</button>
+        <button id="tplLoad">テンプレートを読み込む</button>
+      </div>
+      <input type="file" id="tplFile" accept="application/json" hidden>
+      <label class="tplonly" style="margin-top:6px"><input type="checkbox" id="tplWithBase"> 背景画像もテンプレートに含める（ファイルが大きくなります）</label>
+    </div>
+
+    <div class="card tplonly">
+      <h2>1. ベース背景</h2>
+      <label for="baseFile">背景画像（未指定なら下の背景色を使用）</label>
+      <input type="file" id="baseFile" accept="image/*">
+      <div class="row tight" style="margin-top:6px">
+        <button class="sm" id="baseClear">画像を外す</button>
+      </div>
+      <div class="grid2">
+        <div>
+          <label for="fit">画像の合わせ方</label>
+          <select id="fit">
+            <option value="cover">全面に合わせる（推奨）</option>
+            <option value="contain">全体を収める</option>
+          </select>
+        </div>
+        <div>
+          <label for="bgColor">背景色</label>
+          <div class="row tight"><input type="color" id="bgColor" value="#12263f"><label style="margin:0"><input type="checkbox" id="gradient" checked> グラデーション</label></div>
+        </div>
+      </div>
+      <div class="swatches" id="bgSwatches"></div>
+      <label for="zoom">ズーム <span class="val" id="zoomV"></span></label>
+      <input type="range" id="zoom" min="100" max="250" value="100">
+      <div class="grid2">
+        <div><label for="offX">左右位置 <span class="val" id="offXV"></span></label><input type="range" id="offX" min="-50" max="50" value="0"></div>
+        <div><label for="offY">上下位置 <span class="val" id="offYV"></span></label><input type="range" id="offY" min="-50" max="50" value="0"></div>
+      </div>
+      <div class="grid2">
+        <div><label for="dim">暗くする <span class="val" id="dimV"></span></label><input type="range" id="dim" min="0" max="70" value="18"></div>
+        <div><label for="blur">ぼかし <span class="val" id="blurV"></span></label><input type="range" id="blur" min="0" max="20" value="0"></div>
+      </div>
+      <p class="hint">写真をそのまま使うと文字が読みにくくなります。「暗くする」は可読性のための機能です。</p>
+    </div>
+
+    <div class="card tplonly">
+      <h2>2. ロゴ</h2>
+      <input type="file" id="logoFile" accept="image/*">
+      <div class="row tight" style="margin-top:6px"><button class="sm" id="logoClear">ロゴを外す</button></div>
+      <label for="logoSize">ロゴの大きさ <span class="val" id="logoSizeV"></span></label>
+      <input type="range" id="logoSize" min="3" max="20" value="8">
+    </div>
+
+    <div class="card">
+      <h2>3. 文字の内容</h2>
+      <label for="f_company">会社名・事務所名</label><input type="text" id="f_company" placeholder="〇〇法律事務所">
+      <label for="f_qual">資格名・士業表記</label><input type="text" id="f_qual" placeholder="弁護士">
+      <label for="f_name">氏名</label><input type="text" id="f_name" placeholder="山田 太郎">
+      <label for="f_namesub">ふりがな・英字表記</label><input type="text" id="f_namesub" placeholder="TARO YAMADA">
+      <label for="f_title">肩書・部署</label><input type="text" id="f_title" placeholder="代表 / 企業法務部">
+      <label for="f_contact">連絡先（電話・メール・URL）</label><input type="text" id="f_contact" placeholder="03-0000-0000 / example.com">
+      <label for="f_catch">キャッチコピー（改行で複数行）</label><textarea id="f_catch" placeholder="はじめの一歩を、ともに。"></textarea>
+      <label for="f_qr">QRコードの内容（URL など。空ならQRなし）</label><input type="text" id="f_qr" placeholder="https://example.com/contact">
+      <div class="row" style="margin-top:6px">
+        <div style="flex:2">
+          <label for="qrEc" style="margin-top:0">QRの誤り訂正</label>
+          <select id="qrEc">
+            <option value="L">L（最小・容量優先）</option>
+            <option value="M" selected>M（標準・推奨）</option>
+            <option value="Q">Q（高）</option>
+            <option value="H">H（最高・ロゴ重ね向き）</option>
+          </select>
+        </div>
+        <div style="flex:1">
+          <label for="qrSize" style="margin-top:0">大きさ <span class="val" id="qrSizeV"></span></label>
+          <input type="range" id="qrSize" min="6" max="25" value="13">
+        </div>
+      </div>
+      <p class="hint" id="qrHint"></p>
+    </div>
+
+    <div class="card">
+      <h2>4. レイアウト</h2>
+      <div class="layouts" id="layouts">
+        <button data-layout="A" aria-pressed="true">A<br>右下・名刺</button>
+        <button data-layout="B" aria-pressed="false">B<br>左上・帯</button>
+        <button data-layout="C" aria-pressed="false">C<br>右サイド</button>
+        <button data-layout="D" aria-pressed="false">D<br>上部バー</button>
+        <button data-layout="E" aria-pressed="false">E<br>ミニマル</button>
+      </div>
+      <label style="margin-top:10px">配置の優先度</label>
+      <div class="segmented">
+        <button id="marginSafe" aria-pressed="true">安全（切れにくい）</button>
+        <button id="marginWide" aria-pressed="false">見た目（端まで使う）</button>
+      </div>
+      <p class="hint" id="marginHint"></p>
+    </div>
+
+    <div class="card tplonly">
+      <h2>5. 配色・書体</h2>
+      <label for="font">書体</label>
+      <select id="font">
+        <option value="gothic">ゴシック体（標準）</option>
+        <option value="ud">UDゴシック（読みやすさ重視）</option>
+        <option value="mincho">明朝体</option>
+        <option value="rounded">丸ゴシック</option>
+      </select>
+      <div class="grid2">
+        <div><label for="textColor">文字色</label><input type="color" id="textColor" value="#ffffff"></div>
+        <div><label for="accentColor">アクセント色</label><input type="color" id="accentColor" value="#c9a227"></div>
+      </div>
+      <div class="checks" style="margin-top:10px">
+        <label><input type="checkbox" id="panelOn" checked> 文字の下に半透明パネルを敷く</label>
+        <label><input type="checkbox" id="shadowOn" checked> 文字に影を付ける</label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>6. 微調整</h2>
+      <label for="blockSel">調整するブロック</label>
+      <select id="blockSel">
+        <option value="main">主情報（会社名・氏名など）</option>
+        <option value="sub">副情報</option>
+        <option value="catch">キャッチコピー</option>
+        <option value="qr">QRコード</option>
+      </select>
+      <div class="grid2">
+        <div><label for="adjX">左右位置 <span class="val" id="adjXV"></span></label><input type="range" id="adjX" min="-40" max="40" value="0"></div>
+        <div><label for="adjY">上下位置 <span class="val" id="adjYV"></span></label><input type="range" id="adjY" min="-40" max="40" value="0"></div>
+      </div>
+      <label for="adjScale">文字の大きさ <span class="val" id="adjScaleV"></span></label>
+      <input type="range" id="adjScale" min="50" max="200" value="100">
+      <div class="row tight" style="margin-top:8px">
+        <button class="sm" id="adjReset">このブロックを初期値に戻す</button>
+        <button class="sm" id="adjResetAll">すべて初期値に戻す</button>
+      </div>
+      <p class="hint">プレビュー上で文字やロゴを直接ドラッグしても動かせます。</p>
+    </div>
+  </div>
+
+  <!-- ============ プレビュー ============ -->
+  <div class="right">
+    <div class="card">
+      <h2>プレビュー</h2>
+      <div id="stage"><canvas id="preview"></canvas></div>
+      <div class="checks" style="margin-top:10px">
+        <label><input type="checkbox" id="showSafe" checked> セーフゾーン</label>
+        <label><input type="checkbox" id="showPerson"> 人物の位置</label>
+        <label><input type="checkbox" id="showMirror"> 自分の画面での見え方（左右反転）</label>
+      </div>
+      <div class="legend" id="legend" hidden>
+        <span><i class="sw" style="background:rgba(214,69,69,.30)"></i>正方形タイルで切れる</span>
+        <span><i class="sw" style="background:rgba(222,170,40,.26)"></i>4:3タイルで切れる</span>
+        <span><i class="sw" style="background:rgba(60,130,220,.35)"></i>人物で隠れやすい</span>
+        <span><i class="sw" style="background:rgba(120,120,120,.45)"></i>参加者名の表示位置</span>
+      </div>
+      <div id="mirrorNote" class="hint" hidden>※ 自分の画面では文字が裏返って見えますが、相手には正しい向きで表示されます（各ツールの自己映像は既定で左右反転のため）。</div>
+      <div class="tiles">
+        <figure class="tile" style="margin:0"><canvas id="t169"></canvas><figcaption>16:9（1対1など）</figcaption></figure>
+        <figure class="tile" style="margin:0"><canvas id="t43"></canvas><figcaption>4:3（少人数）</figcaption></figure>
+        <figure class="tile" style="margin:0"><canvas id="t11"></canvas><figcaption>1:1（大人数）</figcaption></figure>
+      </div>
+      <p class="hint">会議ツールはタイルの形に合わせて背景の左右を切り落とします。3つとも情報が残っているか確認してください。</p>
+    </div>
+
+    <div class="card">
+      <h2>書き出し</h2>
+      <div class="grid2">
+        <div>
+          <label for="sizeSel">出力サイズ</label>
+          <select id="sizeSel">
+            <option value="1920x1080" selected>Google Meet / Zoom / Teams 共通 1920×1080</option>
+            <option value="2560x1440">高解像度 2560×1440</option>
+            <option value="3840x2160">4K 3840×2160</option>
+            <option value="1280x720">軽量 1280×720</option>
+          </select>
+        </div>
+        <div>
+          <label for="fmtSel">ファイル形式</label>
+          <select id="fmtSel">
+            <option value="png" selected>PNG（画質優先）</option>
+            <option value="jpeg">JPEG（容量優先）</option>
+          </select>
+        </div>
+      </div>
+      <div id="qualityRow" hidden>
+        <label for="quality">JPEG画質 <span class="val" id="qualityV"></span></label>
+        <input type="range" id="quality" min="60" max="100" value="88">
+      </div>
+      <div class="sizeinfo" id="sizeInfo">推定ファイルサイズ: 計算中…</div>
+      <div id="sizeWarn" class="warn" hidden></div>
+      <div class="row" style="margin-top:10px">
+        <button class="primary" id="download">背景画像をダウンロード</button>
+      </div>
+      <details>
+        <summary>会議ツールへの設定手順</summary>
+        <div class="body">
+          <p style="font-size:12px;margin:0 0 4px"><b>Google Meet</b></p>
+          <ol><li>会議画面の「その他の操作」→「ビジュアル エフェクトを適用」</li><li>背景の「＋」から、書き出した画像をアップロード</li></ol>
+          <p style="font-size:12px;margin:8px 0 4px"><b>Zoom</b></p>
+          <ol><li>設定 →「背景とエフェクト」→「＋」→「画像を追加」</li></ol>
+          <p style="font-size:12px;margin:8px 0 4px"><b>Microsoft Teams</b></p>
+          <ol><li>会議前の画面または会議中のメニューから「背景フィルター」→「新規追加」</li></ol>
+          <p class="hint">※ 各ツールのUI名称は更新される場合があります。</p>
+        </div>
+      </details>
+      <details>
+        <summary>使用上の注意（権利関係）</summary>
+        <div class="body">
+          <ol>
+            <li>ベース画像にフリー素材を使う場合は、商用利用可否・改変可否・クレジット表記の要否をライセンスでご確認ください。</li>
+            <li>ロゴは自社のものでも、ロゴ使用規程（余白・改変の禁止など）がある場合はそれに従ってください。</li>
+            <li>執務室の写真を使う場合、書類・モニター・第三者の写り込みにご注意ください。</li>
+            <li>本ツールは端末にインストール済みの書体で描画します。生成画像の利用可否は、その書体のライセンスに従います。</li>
+            <li>他社のロゴ・商標を無断で使用しないでください。</li>
+          </ol>
+        </div>
+      </details>
+    </div>
+  </div>
+</div>
+<script>
+// ===== QR-ENCODER-BEGIN =====
+// QRコード生成（バイトモード / 型番1-15）。外部通信・外部ライブラリなしで完結させるための自前実装。
+// JIS X 0510 / ISO/IEC 18004 準拠。テスト: tests/qr.test.mjs（Python segno の出力と全モジュール比較）
+const QR = (() => {
+  // --- GF(256) 原始多項式 0x11D ---
+  const EXP = new Uint8Array(512), LOG = new Uint8Array(256);
+  for (let i = 0, x = 1; i < 255; i++) {
+    EXP[i] = x; LOG[x] = i;
+    x <<= 1; if (x & 0x100) x ^= 0x11d;
+  }
+  for (let i = 255; i < 512; i++) EXP[i] = EXP[i - 255];
+  const mul = (a, b) => (a === 0 || b === 0) ? 0 : EXP[LOG[a] + LOG[b]];
+
+  // 生成多項式 g(x) = Π(x - α^i)
+  function genPoly(n) {
+    let g = [1];
+    for (let i = 0; i < n; i++) {
+      const next = new Array(g.length + 1).fill(0);
+      for (let j = 0; j < g.length; j++) {
+        next[j] ^= mul(g[j], 1);
+        next[j + 1] ^= mul(g[j], EXP[i]);
+      }
+      g = next;
+    }
+    return g;
+  }
+
+  // 剰余計算（RS符号語の算出）
+  function rsEncode(data, ecLen) {
+    const g = genPoly(ecLen);
+    const res = new Array(data.length + ecLen).fill(0);
+    for (let i = 0; i < data.length; i++) res[i] = data[i];
+    for (let i = 0; i < data.length; i++) {
+      const factor = res[i];
+      if (factor === 0) continue;
+      for (let j = 0; j < g.length; j++) res[i + j] ^= mul(g[j], factor);
+    }
+    return res.slice(data.length);
+  }
+
+  // --- ブロック構成表 [ECC符号語数/ブロック, [ブロック数, データ符号語数/ブロック], ...] ---
+  // 添字: RS[版番号][レベル]  レベル順は L, M, Q, H
+  const RS = {
+    1:  [[7,[[1,19]]],            [10,[[1,16]]],            [13,[[1,13]]],            [17,[[1,9]]]],
+    2:  [[10,[[1,34]]],           [16,[[1,28]]],            [22,[[1,22]]],            [28,[[1,16]]]],
+    3:  [[15,[[1,55]]],           [26,[[1,44]]],            [18,[[2,17]]],            [22,[[2,13]]]],
+    4:  [[20,[[1,80]]],           [18,[[2,32]]],            [26,[[2,24]]],            [16,[[4,9]]]],
+    5:  [[26,[[1,108]]],          [24,[[2,43]]],            [18,[[2,15],[2,16]]],     [22,[[2,11],[2,12]]]],
+    6:  [[18,[[2,68]]],           [16,[[4,27]]],            [24,[[4,19]]],            [28,[[4,15]]]],
+    7:  [[20,[[2,78]]],           [18,[[4,31]]],            [18,[[2,14],[4,15]]],     [26,[[4,13],[1,14]]]],
+    8:  [[24,[[2,97]]],           [22,[[2,38],[2,39]]],     [22,[[4,18],[2,19]]],     [26,[[4,14],[2,15]]]],
+    9:  [[30,[[2,116]]],          [22,[[3,36],[2,37]]],     [20,[[4,16],[4,17]]],     [24,[[4,12],[4,13]]]],
+    10: [[18,[[2,68],[2,69]]],    [26,[[4,43],[1,44]]],     [24,[[6,19],[2,20]]],     [28,[[6,15],[2,16]]]],
+    11: [[20,[[4,81]]],           [30,[[1,50],[4,51]]],     [28,[[4,22],[4,23]]],     [24,[[3,12],[8,13]]]],
+    12: [[24,[[2,92],[2,93]]],    [22,[[6,36],[2,37]]],     [26,[[4,20],[6,21]]],     [28,[[7,14],[4,15]]]],
+    13: [[26,[[4,107]]],          [22,[[8,37],[1,38]]],     [24,[[8,20],[4,21]]],     [22,[[12,11],[4,12]]]],
+    14: [[30,[[3,115],[1,116]]],  [24,[[4,40],[5,41]]],     [20,[[11,16],[5,17]]],    [24,[[11,12],[5,13]]]],
+    15: [[22,[[5,87],[1,88]]],    [24,[[5,41],[5,42]]],     [30,[[5,24],[7,25]]],     [24,[[11,12],[7,13]]]],
+  };
+  const MAXVER = 15;
+
+  // 位置合わせパターンの中心座標
+  const ALIGN = {
+    1: [], 2: [6,18], 3: [6,22], 4: [6,26], 5: [6,30], 6: [6,34], 7: [6,22,38],
+    8: [6,24,42], 9: [6,26,46], 10: [6,28,50], 11: [6,30,54], 12: [6,32,58],
+    13: [6,34,62], 14: [6,26,46,66], 15: [6,26,48,70],
+  };
+
+  const EC_ORDER = { L: 0, M: 1, Q: 2, H: 3 };
+  const EC_BITS  = { L: 1, M: 0, Q: 3, H: 2 }; // 形式情報で使う誤り訂正レベル指示子
+
+  const dataCapacity = (ver, ec) => {
+    const [, groups] = RS[ver][EC_ORDER[ec]];
+    return groups.reduce((s, [n, k]) => s + n * k, 0);
+  };
+
+  // BCH(15,5) 形式情報
+  function formatBits(ec, mask) {
+    const d = (EC_BITS[ec] << 3) | mask;
+    let rem = d << 10;
+    for (let i = 14; i >= 10; i--) if (rem & (1 << i)) rem ^= 0x537 << (i - 10);
+    return ((d << 10) | rem) ^ 0x5412;
+  }
+
+  // BCH(18,6) 型番情報（型番7以上で使用）
+  function versionBits(ver) {
+    let rem = ver << 12;
+    for (let i = 17; i >= 12; i--) if (rem & (1 << i)) rem ^= 0x1f25 << (i - 12);
+    return (ver << 12) | rem;
+  }
+
+  const MASKS = [
+    (i, j) => (i + j) % 2 === 0,
+    (i, j) => i % 2 === 0,
+    (i, j) => j % 3 === 0,
+    (i, j) => (i + j) % 3 === 0,
+    (i, j) => (Math.floor(i / 2) + Math.floor(j / 3)) % 2 === 0,
+    (i, j) => ((i * j) % 2) + ((i * j) % 3) === 0,
+    (i, j) => (((i * j) % 2) + ((i * j) % 3)) % 2 === 0,
+    (i, j) => (((i + j) % 2) + ((i * j) % 3)) % 2 === 0,
+  ];
+
+  // 機能パターン（探索/分離/タイミング/位置合わせ/形式・型番領域）を配置し、
+  // データを置ける位置を reserved=false として返す
+  function buildTemplate(ver) {
+    const size = ver * 4 + 17;
+    const m = Array.from({ length: size }, () => new Int8Array(size).fill(-1));
+    const fixed = Array.from({ length: size }, () => new Uint8Array(size));
+    const set = (r, c, v) => { m[r][c] = v; fixed[r][c] = 1; };
+
+    // 探索パターン＋分離パターン
+    for (const [br, bc] of [[0, 0], [0, size - 7], [size - 7, 0]]) {
+      for (let r = -1; r <= 7; r++) for (let c = -1; c <= 7; c++) {
+        const rr = br + r, cc = bc + c;
+        if (rr < 0 || rr >= size || cc < 0 || cc >= size) continue;
+        const on = (r >= 0 && r <= 6 && (c === 0 || c === 6)) ||
+                   (c >= 0 && c <= 6 && (r === 0 || r === 6)) ||
+                   (r >= 2 && r <= 4 && c >= 2 && c <= 4);
+        set(rr, cc, on ? 1 : 0);
+      }
+    }
+    // タイミングパターン
+    for (let i = 8; i < size - 8; i++) { set(6, i, i % 2 === 0 ? 1 : 0); set(i, 6, i % 2 === 0 ? 1 : 0); }
+    // 位置合わせパターン
+    const centers = ALIGN[ver];
+    for (const r of centers) for (const c of centers) {
+      // 探索パターンと重なる3箇所（左上・右上・左下）だけを除外する。
+      // タイミングパターン上にある中心（行6・列6）は除外してはならない。
+      if ((r === 6 && c === 6) || (r === 6 && c === size - 7) || (r === size - 7 && c === 6)) continue;
+      for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) {
+        const on = Math.max(Math.abs(dr), Math.abs(dc)) !== 1;
+        set(r + dr, c + dc, on ? 1 : 0);
+      }
+    }
+    // 形式情報領域の予約（値は後で書き込む）
+    for (let i = 0; i < 9; i++) { if (!fixed[8][i]) set(8, i, 0); if (!fixed[i][8]) set(i, 8, 0); }
+    for (let i = 0; i < 8; i++) { set(8, size - 1 - i, 0); set(size - 1 - i, 8, 0); }
+    set(size - 8, 8, 1); // 常に暗の固定モジュール
+    // 型番情報領域の予約
+    if (ver >= 7) {
+      for (let i = 0; i < 18; i++) {
+        const a = Math.floor(i / 3), b = i % 3;
+        set(size - 11 + b, a, 0); set(a, size - 11 + b, 0);
+      }
+    }
+    return { size, m, fixed };
+  }
+
+  function placeData(tpl, bits) {
+    const { size, m, fixed } = tpl;
+    let idx = 0, up = true;
+    for (let right = size - 1; right > 0; right -= 2) {
+      if (right === 6) right = 5; // 垂直タイミングパターン列は飛ばす
+      for (let v = 0; v < size; v++) {
+        const row = up ? size - 1 - v : v;
+        for (const col of [right, right - 1]) {
+          if (fixed[row][col]) continue;
+          m[row][col] = idx < bits.length ? bits[idx] : 0; // 余りビットは0
+          idx++;
+        }
+      }
+      up = !up;
+    }
+  }
+
+  function penalty(m, size) {
+    let score = 0;
+    // 規則1: 同色の連続
+    for (let i = 0; i < size; i++) {
+      for (const horiz of [true, false]) {
+        let run = 1, prev = -1;
+        for (let j = 0; j < size; j++) {
+          const v = horiz ? m[i][j] : m[j][i];
+          if (v === prev) { run++; } else { if (run >= 5) score += run - 2; run = 1; prev = v; }
+        }
+        if (run >= 5) score += run - 2;
+      }
+    }
+    // 規則2: 2x2 の同色ブロック
+    for (let i = 0; i < size - 1; i++) for (let j = 0; j < size - 1; j++) {
+      const v = m[i][j];
+      if (v === m[i][j + 1] && v === m[i + 1][j] && v === m[i + 1][j + 1]) score += 3;
+    }
+    // 規則3: 1:1:3:1:1 比率パターン
+    const P1 = [1,0,1,1,1,0,1,0,0,0,0], P2 = [0,0,0,0,1,0,1,1,1,0,1];
+    for (let i = 0; i < size; i++) for (let j = 0; j <= size - 11; j++) {
+      for (const horiz of [true, false]) {
+        let ok1 = true, ok2 = true;
+        for (let k = 0; k < 11; k++) {
+          const v = horiz ? m[i][j + k] : m[j + k][i];
+          if (v !== P1[k]) ok1 = false;
+          if (v !== P2[k]) ok2 = false;
+        }
+        if (ok1) score += 40;
+        if (ok2) score += 40;
+      }
+    }
+    // 規則4: 暗モジュール比率の偏り
+    let dark = 0;
+    for (let i = 0; i < size; i++) for (let j = 0; j < size; j++) dark += m[i][j];
+    const ratio = (dark * 100) / (size * size);
+    score += Math.floor(Math.abs(ratio - 50) / 5) * 10;
+    return score;
+  }
+
+  function writeFormat(m, size, ec, mask) {
+    const bits = formatBits(ec, mask);
+    const bit = (i) => (bits >> i) & 1;
+    for (let i = 0; i < 15; i++) {          // 左上→左下（縦）
+      const b = bit(i);
+      if (i < 6) m[i][8] = b;
+      else if (i < 8) m[i + 1][8] = b;
+      else m[size - 15 + i][8] = b;
+    }
+    for (let i = 0; i < 15; i++) {          // 右上→左上（横）
+      const b = bit(i);
+      if (i < 8) m[8][size - 1 - i] = b;
+      else if (i === 8) m[8][7] = b;
+      else m[8][14 - i] = b;
+    }
+    m[size - 8][8] = 1;                     // 固定の暗モジュール
+  }
+
+  function writeVersion(m, size, ver) {
+    if (ver < 7) return;
+    const bits = versionBits(ver);
+    for (let i = 0; i < 18; i++) {
+      const b = (bits >> i) & 1;
+      const a = Math.floor(i / 3), c = i % 3;
+      m[size - 11 + c][a] = b;
+      m[a][size - 11 + c] = b;
+    }
+  }
+
+  /**
+   * 文字列から QR コードのモジュール行列を生成する。
+   * @param {string} text 対象文字列（UTF-8 バイトモードで符号化）
+   * @param {'L'|'M'|'Q'|'H'} ecLevel 誤り訂正レベル
+   * @returns {number[][]} 0/1 の二次元配列（1 が暗モジュール）
+   */
+  function encode(text, ecLevel = 'M') {
+    const ec = EC_ORDER[ecLevel] === undefined ? 'M' : ecLevel;
+    const bytes = Array.from(new TextEncoder().encode(text));
+
+    // 収まる最小の型番を選ぶ
+    let ver = 0;
+    for (let v = 1; v <= MAXVER; v++) {
+      const lenBits = v <= 9 ? 8 : 16;
+      const need = Math.ceil((4 + lenBits + bytes.length * 8) / 8);
+      if (need <= dataCapacity(v, ec)) { ver = v; break; }
+    }
+    if (!ver) throw new Error('QRコードに収まりません（文字数を減らしてください）');
+
+    // ビット列の組み立て
+    const bits = [];
+    const push = (val, len) => { for (let i = len - 1; i >= 0; i--) bits.push((val >> i) & 1); };
+    push(0b0100, 4);                       // バイトモード
+    push(bytes.length, ver <= 9 ? 8 : 16); // 文字数指示子
+    for (const b of bytes) push(b, 8);
+
+    const capBits = dataCapacity(ver, ec) * 8;
+    for (let i = 0; i < 4 && bits.length < capBits; i++) bits.push(0); // 終端パターン
+    while (bits.length % 8 !== 0) bits.push(0);
+    const words = [];
+    for (let i = 0; i < bits.length; i += 8) {
+      let v = 0; for (let j = 0; j < 8; j++) v = (v << 1) | bits[i + j];
+      words.push(v);
+    }
+    const PAD = [0xec, 0x11];
+    for (let i = 0; words.length < dataCapacity(ver, ec); i++) words.push(PAD[i % 2]);
+
+    // ブロック分割 → RS 符号語算出
+    const [ecLen, groups] = RS[ver][EC_ORDER[ec]];
+    const dataBlocks = [], ecBlocks = [];
+    let p = 0;
+    for (const [n, k] of groups) for (let i = 0; i < n; i++) {
+      const blk = words.slice(p, p + k); p += k;
+      dataBlocks.push(blk); ecBlocks.push(rsEncode(blk, ecLen));
+    }
+    // インターリーブ
+    const out = [];
+    const maxData = Math.max(...dataBlocks.map(b => b.length));
+    for (let i = 0; i < maxData; i++) for (const b of dataBlocks) if (i < b.length) out.push(b[i]);
+    for (let i = 0; i < ecLen; i++) for (const b of ecBlocks) out.push(b[i]);
+
+    const finalBits = [];
+    for (const w of out) for (let i = 7; i >= 0; i--) finalBits.push((w >> i) & 1);
+
+    // マスク8種を試して評価値が最小のものを採用
+    let best = null, bestScore = Infinity;
+    for (let mask = 0; mask < 8; mask++) {
+      const tpl = buildTemplate(ver);
+      placeData(tpl, finalBits);
+      const { size, m, fixed } = tpl;
+      for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) {
+        if (!fixed[r][c] && MASKS[mask](r, c)) m[r][c] ^= 1;
+      }
+      writeFormat(m, size, ec, mask);
+      writeVersion(m, size, ver);
+      const s = penalty(m, size);
+      if (s < bestScore) { bestScore = s; best = m; }
+    }
+    return best.map(row => Array.from(row));
+  }
+
+  return { encode };
+})();
+// ===== QR-ENCODER-END =====
+
+/* =========================================================================
+   アプリ本体
+   - 座標はすべて画像の幅・高さに対する比率で保持する。
+     これにより 1280×720 でも 3840×2160 でも同じ見た目になる。
+   - 画像・文字列は一切外部送信しない（fetch / XMLHttpRequest を使用しない）。
+   ========================================================================= */
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+
+  const FONTS = {
+    gothic:  '"Hiragino Kaku Gothic ProN","Yu Gothic",YuGothic,Meiryo,"Noto Sans JP","MS PGothic",sans-serif',
+    ud:      '"BIZ UDPGothic","BIZ UDGothic","Hiragino Kaku Gothic ProN",Meiryo,"Noto Sans JP",sans-serif',
+    mincho:  '"Hiragino Mincho ProN","Yu Mincho",YuMincho,"MS PMincho","Noto Serif JP",serif',
+    rounded: '"Hiragino Maru Gothic ProN","Zen Maru Gothic","M PLUS Rounded 1c","Yu Gothic",sans-serif',
+  };
+
+  const BG_PRESETS = ['#12263f','#1c3d2f','#3b2f4a','#45301f','#2b2b2f','#0f4c5c','#7a2e2e','#e8e6e1'];
+
+  const S = {
+    baseSrc: null, baseImg: null, logoSrc: null, logoImg: null,
+    fit: 'cover', zoom: 100, offX: 0, offY: 0, dim: 18, blur: 0,
+    bgColor: '#12263f', gradient: true, logoSize: 8,
+    text: { company: '', qual: '', name: '', namesub: '', title: '', contact: '', catch: '', qr: '' },
+    qrEc: 'M', qrSize: 13,
+    layout: 'A', marginMode: 'safe',
+    font: 'gothic', textColor: '#ffffff', accentColor: '#c9a227',
+    panelOn: true, shadowOn: true,
+    adj: { main: { x:0,y:0,s:100 }, sub: { x:0,y:0,s:100 }, catch: { x:0,y:0,s:100 }, qr: { x:0,y:0,s:100 } },
+    size: '1920x1080', fmt: 'png', quality: 88,
+    showSafe: true, showPerson: false, showMirror: false,
+  };
+
+  /* ---------- セーフゾーンの定数（§ 仕様書 8章。幾何学的に確定する値） ---------- */
+  // 正方形タイルに切り出されると 16:9 の左右 (1 - 9/16) / 2 = 21.875% が失われる
+  const CUT_SQUARE = (1 - 9 / 16) / 2;   // 0.21875
+  // 4:3 タイルでは (1 - (9/16)*(4/3)) / 2 = 12.5%
+  const CUT_43 = (1 - (9 / 16) * (4 / 3)) / 2; // 0.125
+  // 半透明パネルの余白（高さの 2.8%）が幅に占める割合 ≒ 0.0158 を上乗せし、
+  // 正方形タイルに切り抜かれてもパネルの端まで残るようにする
+  const MARGIN = { safe: CUT_SQUARE + 0.020, wide: 0.06 };
+
+  /* ================= レイアウト定義 ================= */
+  // item: {t:'text'|'wrap'|'logo'|'rule'|'qr', key, size(高さ比), weight, color, gap}
+  const txt = (key, size, weight, color, gap) => ({ t:'text', key, size, weight: weight || 400, color, gap });
+  const rule = (gap) => ({ t:'rule', size: 0.0035, gap: gap == null ? 0.020 : gap });
+  const logo = (gap) => ({ t:'logo', size: null, gap: gap == null ? 0.022 : gap });
+  const qr   = () => ({ t:'qr', size: null, gap: 0 });
+  const wrap = (size, maxW, gap) => ({ t:'wrap', key:'catch', size, maxW, gap: gap == null ? 0.016 : gap });
+
+  const ACC = 'accent'; // 色指定のキーワード
+
+  function layoutDef(id, m) {
+    const L = m, R = 1 - m;
+    switch (id) {
+      case 'A': return {
+        blocks: [
+          { id:'main', x:R, y:0.90, align:'right', dir:'up', panel:true, items:[
+            logo(), txt('company',0.030,600), rule(),
+            txt('qual',0.024,400,ACC,0.008), txt('name',0.062,700,null,0.008),
+            txt('namesub',0.020,400,null,0.016), txt('title',0.024,400),
+            txt('contact',0.020,400),
+          ]},
+          { id:'catch', x:L, y:0.13, align:'left', dir:'down', panel:false, items:[ wrap(0.036, 0.42) ]},
+          { id:'qr', x:R, y:0.10, align:'right', dir:'down', panel:true, items:[ qr() ]},
+        ]};
+      case 'B': return {
+        blocks: [
+          { id:'main', x:L, y:0.09, align:'left', dir:'down', panel:true, items:[
+            logo(), txt('company',0.032,600), rule(0),
+          ]},
+          { id:'sub', x:R, y:0.90, align:'right', dir:'up', panel:true, items:[
+            txt('qual',0.024,400,ACC,0.008), txt('name',0.060,700,null,0.008),
+            txt('namesub',0.020,400,null,0.016), txt('title',0.024,400), txt('contact',0.020,400),
+          ]},
+          { id:'catch', x:L, y:0.34, align:'left', dir:'down', panel:false, items:[ wrap(0.036, 0.40) ]},
+          { id:'qr', x:R, y:0.09, align:'right', dir:'down', panel:true, items:[ qr() ]},
+        ]};
+      case 'C': return {
+        band: { x0: R - 0.30, x1: 1.0 },
+        blocks: [
+          { id:'main', x:R, y:0.50, align:'right', dir:'center', panel:false, items:[
+            logo(), txt('company',0.028,600), rule(),
+            txt('qual',0.022,400,ACC,0.008), txt('name',0.054,700,null,0.008),
+            txt('namesub',0.019,400,null,0.018), txt('title',0.022,400),
+            wrap(0.024, 0.26, 0.020), txt('contact',0.019,400,null,0.020), qr(),
+          ]},
+        ]};
+      case 'D': return {
+        bar: { y0: 0, y1: 0.17 },
+        blocks: [
+          { id:'main', x:L, y:0.085, align:'left', dir:'center', panel:false, items:[
+            logo(), txt('company',0.030,600),
+          ]},
+          { id:'sub', x:R, y:0.085, align:'right', dir:'center', panel:false, items:[
+            txt('qual',0.020,400,ACC,0.006), txt('name',0.040,700,null,0.006), txt('title',0.020,400),
+          ]},
+          { id:'catch', x:L, y:0.26, align:'left', dir:'down', panel:false, items:[
+            wrap(0.040, 0.44), txt('contact',0.020,400),
+          ]},
+          { id:'qr', x:R, y:0.90, align:'right', dir:'up', panel:true, items:[ qr() ]},
+        ]};
+      case 'E': default: return {
+        blocks: [
+          { id:'main', x:R, y:0.92, align:'right', dir:'up', panel:false, items:[
+            txt('name',0.040,700,null,0.006), txt('title',0.020,400),
+          ]},
+          { id:'qr', x:R, y:0.10, align:'right', dir:'down', panel:true, items:[ qr() ]},
+        ]};
+    }
+  }
+
+  /* ================= 文字の折り返し ================= */
+  function tokenize(str) {
+    return str.match(/[A-Za-z0-9@._\-\/:+#&'"!?()]+|[ \t]+|[\s\S]/gu) || [];
+  }
+  function wrapLines(ctx, text, maxW) {
+    const out = [];
+    for (const para of String(text).split(/\r?\n/)) {
+      if (!para.trim()) continue;
+      let line = '';
+      for (const tk of tokenize(para)) {
+        if (!line && /^[ \t]+$/.test(tk)) continue;
+        const test = line + tk;
+        if (line && ctx.measureText(test).width > maxW) { out.push(line); line = /^[ \t]+$/.test(tk) ? '' : tk; }
+        else line = test;
+      }
+      if (line) out.push(line);
+    }
+    return out;
+  }
+
+  /* ================= QRコードのキャッシュ ================= */
+  let qrCache = { text: null, ec: null, matrix: null, error: null };
+  function getQr() {
+    const t = S.text.qr.trim();
+    if (!t) return null;
+    if (qrCache.text === t && qrCache.ec === S.qrEc) return qrCache;
+    try { qrCache = { text: t, ec: S.qrEc, matrix: QR.encode(t, S.qrEc), error: null }; }
+    catch (e) { qrCache = { text: t, ec: S.qrEc, matrix: null, error: e.message }; }
+    return qrCache;
+  }
+
+  /* ================= 測定 ================= */
+  // ブロック内の各要素の寸法を測り、ブロック全体の幅・高さを返す
+  function measureBlock(ctx, block, W, H) {
+    const scale = (S.adj[block.id] ? S.adj[block.id].s : 100) / 100;
+    const fam = FONTS[S.font];
+    const parts = [];
+    let maxW = 0, total = 0;
+
+    for (const it of block.items) {
+      const gap = (it.gap == null ? 0.014 : it.gap) * H * scale;
+      if (it.t === 'text') {
+        const v = (S.text[it.key] || '').trim();
+        if (!v) continue;
+        const fs = it.size * H * scale;
+        ctx.font = `${it.weight} ${fs}px ${fam}`;
+        const w = ctx.measureText(v).width;
+        parts.push({ it, kind:'text', value:v, fs, w, h: fs * 1.18, gap });
+        maxW = Math.max(maxW, w); total += fs * 1.18 + gap;
+      } else if (it.t === 'wrap') {
+        const v = (S.text[it.key] || '').trim();
+        if (!v) continue;
+        const fs = it.size * H * scale;
+        ctx.font = `400 ${fs}px ${fam}`;
+        const lines = wrapLines(ctx, v, it.maxW * W);
+        if (!lines.length) continue;
+        const w = Math.max(...lines.map(l => ctx.measureText(l).width));
+        const h = lines.length * fs * 1.45;
+        parts.push({ it, kind:'wrap', lines, fs, w, h, gap });
+        maxW = Math.max(maxW, w); total += h + gap;
+      } else if (it.t === 'logo') {
+        if (!S.logoImg) continue;
+        const h = (S.logoSize / 100) * H * scale;
+        const w = h * (S.logoImg.naturalWidth / S.logoImg.naturalHeight);
+        parts.push({ it, kind:'logo', w, h, gap });
+        maxW = Math.max(maxW, w); total += h + gap;
+      } else if (it.t === 'qr') {
+        const q = getQr();
+        if (!q || !q.matrix) continue;
+        const h = (S.qrSize / 100) * H * scale;
+        parts.push({ it, kind:'qr', matrix:q.matrix, w:h, h, gap });
+        maxW = Math.max(maxW, h); total += h + gap;
+      } else if (it.t === 'rule') {
+        parts.push({ it, kind:'rule', w:0, h: Math.max(1, it.size * H * scale), gap });
+        total += Math.max(1, it.size * H * scale) + gap;
+      }
+    }
+    // 末尾の余白は含めない
+    if (parts.length) total -= parts[parts.length - 1].gap;
+    // 区切り線の幅はブロック幅に合わせる
+    for (const p of parts) if (p.kind === 'rule') p.w = maxW;
+    return { parts, w: maxW, h: Math.max(0, total) };
+  }
+
+  /* ================= 描画 ================= */
+  function drawBackground(ctx, W, H) {
+    if (S.baseImg) {
+      const img = S.baseImg;
+      const ar = img.naturalWidth / img.naturalHeight, car = W / H;
+      let dw, dh;
+      if (S.fit === 'cover') { if (ar > car) { dh = H; dw = H * ar; } else { dw = W; dh = W / ar; } }
+      else { if (ar > car) { dw = W; dh = W / ar; } else { dh = H; dw = H * ar; } }
+      const over = S.blur > 0 ? 1 + S.blur / 60 : 1;   // ぼかしで端が透けるのを防ぐ
+      dw *= (S.zoom / 100) * over; dh *= (S.zoom / 100) * over;
+      const dx = (W - dw) / 2 + (S.offX / 100) * W;
+      const dy = (H - dh) / 2 + (S.offY / 100) * H;
+      ctx.fillStyle = S.bgColor; ctx.fillRect(0, 0, W, H);
+      if (S.blur > 0 && 'filter' in ctx) ctx.filter = `blur(${(S.blur / 100) * H * 0.06}px)`;
+      ctx.drawImage(img, dx, dy, dw, dh);
+      ctx.filter = 'none';
+    } else if (S.gradient) {
+      const g = ctx.createLinearGradient(0, 0, W, H);
+      g.addColorStop(0, shade(S.bgColor, 22));
+      g.addColorStop(1, shade(S.bgColor, -22));
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    } else {
+      ctx.fillStyle = S.bgColor; ctx.fillRect(0, 0, W, H);
+    }
+    if (S.dim > 0) {
+      ctx.fillStyle = `rgba(0,0,0,${S.dim / 100})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
+
+  function shade(hex, pct) {
+    const n = parseInt(hex.slice(1), 16);
+    const f = (v) => Math.max(0, Math.min(255, Math.round(v + 255 * pct / 100)));
+    return `rgb(${f((n >> 16) & 255)},${f((n >> 8) & 255)},${f(n & 255)})`;
+  }
+  function rgba(hex, a) {
+    const n = parseInt(hex.slice(1), 16);
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function drawQr(ctx, matrix, x, y, size) {
+    const n = matrix.length, quiet = 2;               // 静寂域（クワイエットゾーン）
+    const unit = size / (n + quiet * 2);
+    ctx.fillStyle = '#ffffff';
+    roundRect(ctx, x, y, size, size, size * 0.06); ctx.fill();
+    ctx.fillStyle = '#000000';
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+      if (matrix[r][c]) ctx.fillRect(
+        x + (c + quiet) * unit, y + (r + quiet) * unit,
+        Math.ceil(unit) , Math.ceil(unit));
+    }
+  }
+
+  // ブロックを描画し、当たり判定用の矩形（比率）を返す
+  function drawBlock(ctx, block, W, H, boxes) {
+    const mm = measureBlock(ctx, block, W, H);
+    if (!mm.parts.length) return;
+    const adj = S.adj[block.id] || { x:0, y:0 };
+    const ax = (block.x + adj.x / 100) * W;
+    const ay = (block.y + adj.y / 100) * H;
+    let y = block.dir === 'up' ? ay - mm.h : block.dir === 'center' ? ay - mm.h / 2 : ay;
+    const left = block.align === 'right' ? ax - mm.w : block.align === 'center' ? ax - mm.w / 2 : ax;
+
+    if (block.panel && S.panelOn) {
+      const p = H * 0.028;
+      ctx.fillStyle = 'rgba(0,0,0,0.38)';
+      roundRect(ctx, left - p, y - p, mm.w + p * 2, mm.h + p * 2, H * 0.014);
+      ctx.fill();
+    }
+
+    boxes.push({ id: block.id, x0: (left) / W, y0: y / H, x1: (left + mm.w) / W, y1: (y + mm.h) / H });
+
+    const fam = FONTS[S.font];
+    ctx.textBaseline = 'top';
+    ctx.textAlign = block.align === 'right' ? 'right' : block.align === 'center' ? 'center' : 'left';
+    const tx = block.align === 'right' ? left + mm.w : block.align === 'center' ? left + mm.w / 2 : left;
+
+    for (const p of mm.parts) {
+      const color = p.it.color === ACC ? S.accentColor : (p.it.color || S.textColor);
+      if (S.shadowOn && (p.kind === 'text' || p.kind === 'wrap')) {
+        ctx.shadowColor = 'rgba(0,0,0,0.55)';
+        ctx.shadowBlur = H * 0.006; ctx.shadowOffsetY = H * 0.002;
+      } else { ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0; }
+
+      if (p.kind === 'text') {
+        ctx.font = `${p.it.weight} ${p.fs}px ${fam}`;
+        ctx.fillStyle = color;
+        ctx.fillText(p.value, tx, y + p.fs * 0.09);
+      } else if (p.kind === 'wrap') {
+        ctx.font = `400 ${p.fs}px ${fam}`;
+        ctx.fillStyle = color;
+        p.lines.forEach((ln, i) => ctx.fillText(ln, tx, y + i * p.fs * 1.45 + p.fs * 0.16));
+      } else if (p.kind === 'logo') {
+        ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+        const lx = block.align === 'right' ? tx - p.w : block.align === 'center' ? tx - p.w / 2 : tx;
+        ctx.drawImage(S.logoImg, lx, y, p.w, p.h);
+      } else if (p.kind === 'qr') {
+        ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+        const qx = block.align === 'right' ? tx - p.w : block.align === 'center' ? tx - p.w / 2 : tx;
+        drawQr(ctx, p.matrix, qx, y, p.w);
+      } else if (p.kind === 'rule') {
+        ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+        ctx.fillStyle = S.accentColor;
+        ctx.fillRect(left, y, mm.w, p.h);
+      }
+      y += p.h + p.gap;
+    }
+    ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+  }
+
+  // 出力画像そのものを描く（セーフゾーン等の補助表示は含まない）
+  function renderTo(ctx, W, H) {
+    const boxes = [];
+    ctx.clearRect(0, 0, W, H);
+    drawBackground(ctx, W, H);
+    const def = layoutDef(S.layout, MARGIN[S.marginMode]);
+    if (def.band) {
+      const g = ctx.createLinearGradient(def.band.x0 * W, 0, def.band.x1 * W, 0);
+      g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(0.30, 'rgba(0,0,0,0.52)'); g.addColorStop(1, 'rgba(0,0,0,0.62)');
+      ctx.fillStyle = g; ctx.fillRect(def.band.x0 * W, 0, (def.band.x1 - def.band.x0) * W, H);
+    }
+    if (def.bar) {
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(0, def.bar.y0 * H, W, (def.bar.y1 - def.bar.y0) * H);
+      ctx.fillStyle = S.accentColor;
+      ctx.fillRect(0, def.bar.y1 * H, W, Math.max(1, H * 0.004));
+    }
+    for (const b of def.blocks) drawBlock(ctx, b, W, H, boxes);
+    return boxes;
+  }
+
+  /* ================= プレビュー ================= */
+  const PW = 1600, PH = 900;
+  const pv = $('preview'); pv.width = PW; pv.height = PH;
+  const pctx = pv.getContext('2d');
+  const work = document.createElement('canvas');       // 補助表示を含まない素の描画用
+  work.width = PW; work.height = PH;
+  const wctx = work.getContext('2d');
+  let hitBoxes = [];
+
+  function drawOverlays(ctx, W, H) {
+    if (S.showSafe) {
+      // 正方形タイルで切り落とされる左右
+      ctx.fillStyle = 'rgba(214,69,69,0.16)';
+      ctx.fillRect(0, 0, CUT_SQUARE * W, H);
+      ctx.fillRect(W - CUT_SQUARE * W, 0, CUT_SQUARE * W, H);
+      // 4:3 タイルで切り落とされる左右
+      ctx.fillStyle = 'rgba(222,170,40,0.14)';
+      ctx.fillRect(0, 0, CUT_43 * W, H);
+      ctx.fillRect(W - CUT_43 * W, 0, CUT_43 * W, H);
+      // 参加者名が重なる左下
+      ctx.fillStyle = 'rgba(120,120,120,0.35)';
+      ctx.fillRect(CUT_SQUARE * W, H * 0.90, W * 0.26, H * 0.10);
+      // 境界線
+      ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 2; ctx.setLineDash([8, 8]);
+      for (const x of [CUT_SQUARE, 1 - CUT_SQUARE, CUT_43, 1 - CUT_43]) {
+        ctx.beginPath(); ctx.moveTo(x * W, 0); ctx.lineTo(x * W, H); ctx.stroke();
+      }
+      ctx.setLineDash([]);
+    }
+    if (S.showPerson) {
+      // 着座時に人物が占めるおおよその範囲（目安）
+      ctx.fillStyle = 'rgba(60,130,220,0.32)';
+      ctx.beginPath();
+      ctx.ellipse(W * 0.5, H * 0.34, W * 0.085, H * 0.145, 0, 0, Math.PI * 2); // 頭部
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(W * 0.30, H); ctx.quadraticCurveTo(W * 0.34, H * 0.52, W * 0.5, H * 0.50);
+      ctx.quadraticCurveTo(W * 0.66, H * 0.52, W * 0.70, H); ctx.closePath(); ctx.fill();
+    }
+  }
+
+  function drawTiles() {
+    const specs = [['t169', 16/9], ['t43', 4/3], ['t11', 1]];
+    for (const [id, ratio] of specs) {
+      const cv = $(id);
+      const cw = 360, ch = Math.round(cw / ratio);
+      if (cv.width !== cw || cv.height !== ch) { cv.width = cw; cv.height = ch; }
+      const c = cv.getContext('2d');
+      const sw = Math.min(PW, PH * ratio), sh = sw / ratio;
+      c.clearRect(0, 0, cw, ch);
+      c.drawImage(work, (PW - sw) / 2, (PH - sh) / 2, sw, sh, 0, 0, cw, ch);
+    }
+  }
+
+  let rafId = 0;
+  function render() {
+    if (rafId) return;
+    rafId = requestAnimationFrame(() => {
+      rafId = 0;
+      hitBoxes = renderTo(wctx, PW, PH);
+      pctx.clearRect(0, 0, PW, PH);
+      pctx.save();
+      if (S.showMirror) { pctx.translate(PW, 0); pctx.scale(-1, 1); }
+      pctx.drawImage(work, 0, 0);
+      pctx.restore();
+      drawOverlays(pctx, PW, PH);
+      drawTiles();
+      updateQrHint();
+      scheduleSizeEstimate();
+      saveLocal();
+    });
+  }
+
+  /* ================= 出力 ================= */
+  function exportCanvas() {
+    const [w, h] = S.size.split('x').map(Number);
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    renderTo(cv.getContext('2d'), w, h);
+    return cv;
+  }
+  function toBlob(cv) {
+    return new Promise((res) => cv.toBlob(res,
+      S.fmt === 'png' ? 'image/png' : 'image/jpeg',
+      S.fmt === 'png' ? undefined : S.quality / 100));
+  }
+
+  let estTimer = 0, estSeq = 0;
+  function scheduleSizeEstimate() {
+    clearTimeout(estTimer);
+    $('sizeInfo').textContent = '推定ファイルサイズ: 計算中…';
+    const seq = ++estSeq;
+    estTimer = setTimeout(async () => {
+      const blob = await toBlob(exportCanvas());
+      if (seq !== estSeq || !blob) return;
+      const mb = blob.size / 1024 / 1024;
+      $('sizeInfo').textContent = `推定ファイルサイズ: 約 ${mb.toFixed(2)} MB（${S.size} / ${S.fmt.toUpperCase()}）`;
+      const warn = $('sizeWarn');
+      if (mb > 5) {
+        warn.hidden = false;
+        warn.innerHTML = '容量が 5MB を超えています。会議ツールによっては上限に引っかかる場合があります。'
+          + '<b>JPEG</b> に切り替えるか、出力サイズを小さくすることをおすすめします。';
+      } else { warn.hidden = true; }
+    }, 500);
+  }
+
+  function sanitize(s) { return (s || '').trim().replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 24); }
+
+  $('download').addEventListener('click', async () => {
+    const blob = await toBlob(exportCanvas());
+    if (!blob) return;
+    const nm = sanitize(S.text.name) || sanitize(S.text.company) || 'background';
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `bg_${S.layout}_${S.size}_${nm}.${S.fmt === 'png' ? 'png' : 'jpg'}`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  });
+
+  /* ================= QRの状態表示 ================= */
+  function updateQrHint() {
+    const el = $('qrHint');
+    const t = S.text.qr.trim();
+    if (!t) { el.textContent = 'URL などを入れるとQRコードが配置されます。'; el.style.color = ''; return; }
+    const q = getQr();
+    if (q.error) { el.textContent = '⚠ ' + q.error; el.style.color = 'var(--warn)'; return; }
+    const n = q.matrix.length;
+    el.style.color = '';
+    el.textContent = `型番${(n - 17) / 4}（${n}×${n}）で生成しました。書き出した画像を拡大して読み取り確認をしてください。`;
+  }
+
+  /* ================= 画像の読み込み ================= */
+  function readImage(file, cb) {
+    const fr = new FileReader();
+    fr.onload = () => {
+      const img = new Image();
+      img.onload = () => cb(img, fr.result);
+      img.onerror = () => alert('画像を読み込めませんでした。別のファイルをお試しください。');
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  }
+
+  $('baseFile').addEventListener('change', (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    readImage(f, (img, src) => { S.baseImg = img; S.baseSrc = src; render(); });
+  });
+  $('baseClear').addEventListener('click', () => {
+    S.baseImg = null; S.baseSrc = null; $('baseFile').value = ''; render();
+  });
+  $('logoFile').addEventListener('change', (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    readImage(f, (img, src) => { S.logoImg = img; S.logoSrc = src; render(); });
+  });
+  $('logoClear').addEventListener('click', () => {
+    S.logoImg = null; S.logoSrc = null; $('logoFile').value = ''; render();
+  });
+
+  /* ================= 入力の結び付け ================= */
+  function bindRange(id, key, fmt) {
+    const el = $(id), out = $(id + 'V');
+    const apply = () => {
+      const v = Number(el.value);
+      if (key.startsWith('adj.')) S.adj[$('blockSel').value][key.slice(4)] = v;
+      else S[key] = v;
+      if (out) out.textContent = fmt(v);
+      render();
+    };
+    el.addEventListener('input', apply);
+    el._apply = apply;
+    return el;
+  }
+  const pct = (v) => v + '%';
+  bindRange('zoom', 'zoom', pct);
+  bindRange('offX', 'offX', pct);
+  bindRange('offY', 'offY', pct);
+  bindRange('dim', 'dim', pct);
+  bindRange('blur', 'blur', (v) => v ? v + '%' : 'なし');
+  bindRange('logoSize', 'logoSize', pct);
+  bindRange('qrSize', 'qrSize', pct);
+  bindRange('quality', 'quality', pct);
+  bindRange('adjX', 'adj.x', pct);
+  bindRange('adjY', 'adj.y', pct);
+  bindRange('adjScale', 'adj.s', pct);
+
+  const TEXT_FIELDS = { f_company:'company', f_qual:'qual', f_name:'name', f_namesub:'namesub',
+                        f_title:'title', f_contact:'contact', f_catch:'catch', f_qr:'qr' };
+  for (const [id, key] of Object.entries(TEXT_FIELDS)) {
+    $(id).addEventListener('input', (e) => { S.text[key] = e.target.value; render(); });
+  }
+  for (const [id, key] of [['fit','fit'],['font','font'],['qrEc','qrEc'],['sizeSel','size'],['fmtSel','fmt']]) {
+    $(id).addEventListener('change', (e) => {
+      S[key] = e.target.value;
+      if (id === 'fmtSel') $('qualityRow').hidden = S.fmt !== 'jpeg';
+      render();
+    });
+  }
+  for (const [id, key] of [['bgColor','bgColor'],['textColor','textColor'],['accentColor','accentColor']]) {
+    $(id).addEventListener('input', (e) => { S[key] = e.target.value; render(); });
+  }
+  for (const [id, key] of [['gradient','gradient'],['panelOn','panelOn'],['shadowOn','shadowOn'],
+                           ['showSafe','showSafe'],['showPerson','showPerson'],['showMirror','showMirror']]) {
+    $(id).addEventListener('change', (e) => {
+      S[key] = e.target.checked;
+      if (id === 'showSafe') $('legend').hidden = !S.showSafe;
+      if (id === 'showMirror') $('mirrorNote').hidden = !S.showMirror;
+      render();
+    });
+  }
+
+  // 背景色のプリセット
+  const sw = $('bgSwatches');
+  for (const c of BG_PRESETS) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.style.background = c; b.title = c;
+    b.setAttribute('aria-label', '背景色 ' + c);
+    b.addEventListener('click', () => { S.bgColor = c; $('bgColor').value = c; render(); });
+    sw.appendChild(b);
+  }
+
+  // レイアウト選択
+  $('layouts').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-layout]'); if (!b) return;
+    S.layout = b.dataset.layout;
+    for (const x of $('layouts').querySelectorAll('button')) x.setAttribute('aria-pressed', String(x === b));
+    syncBlockOptions(); render();
+  });
+
+  // 配置の優先度
+  function setMargin(mode) {
+    S.marginMode = mode;
+    $('marginSafe').setAttribute('aria-pressed', String(mode === 'safe'));
+    $('marginWide').setAttribute('aria-pressed', String(mode === 'wide'));
+    $('marginHint').textContent = mode === 'safe'
+      ? '大人数の会議で背景が正方形に切り抜かれても、文字が切れない位置に配置します（左右 21.9% を空けます）。'
+      : '画面の端まで使います。1対1など 16:9 で表示されるときに見栄えがしますが、大人数の会議では端が切れることがあります。';
+    render();
+  }
+  $('marginSafe').addEventListener('click', () => setMargin('safe'));
+  $('marginWide').addEventListener('click', () => setMargin('wide'));
+
+  // 微調整の対象切り替え
+  function syncBlockOptions() {
+    const ids = new Set(layoutDef(S.layout, MARGIN[S.marginMode]).blocks.map(b => b.id));
+    const sel = $('blockSel');
+    for (const o of sel.options) o.disabled = !ids.has(o.value);
+    if (!ids.has(sel.value)) sel.value = 'main';
+    syncAdjControls();
+  }
+  function syncAdjControls() {
+    const a = S.adj[$('blockSel').value];
+    $('adjX').value = a.x; $('adjXV').textContent = a.x + '%';
+    $('adjY').value = a.y; $('adjYV').textContent = a.y + '%';
+    $('adjScale').value = a.s; $('adjScaleV').textContent = a.s + '%';
+  }
+  $('blockSel').addEventListener('change', syncAdjControls);
+  $('adjReset').addEventListener('click', () => {
+    S.adj[$('blockSel').value] = { x:0, y:0, s:100 }; syncAdjControls(); render();
+  });
+  $('adjResetAll').addEventListener('click', () => {
+    for (const k of Object.keys(S.adj)) S.adj[k] = { x:0, y:0, s:100 };
+    syncAdjControls(); render();
+  });
+
+  /* ================= プレビュー上のドラッグ ================= */
+  let drag = null;
+  pv.addEventListener('pointerdown', (e) => {
+    const r = pv.getBoundingClientRect();
+    let nx = (e.clientX - r.left) / r.width;
+    const ny = (e.clientY - r.top) / r.height;
+    if (S.showMirror) nx = 1 - nx;                    // 反転表示中は座標も戻す
+    const pad = 0.02;
+    const hit = [...hitBoxes].reverse().find(b =>
+      nx >= b.x0 - pad && nx <= b.x1 + pad && ny >= b.y0 - pad && ny <= b.y1 + pad);
+    if (!hit) return;
+    drag = { id: hit.id, nx, ny, ox: S.adj[hit.id].x, oy: S.adj[hit.id].y };
+    $('blockSel').value = hit.id; syncAdjControls();
+    pv.setPointerCapture(e.pointerId); pv.classList.add('dragging');
+  });
+  pv.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const r = pv.getBoundingClientRect();
+    let nx = (e.clientX - r.left) / r.width;
+    const ny = (e.clientY - r.top) / r.height;
+    if (S.showMirror) nx = 1 - nx;
+    const clamp = (v) => Math.max(-40, Math.min(40, v));
+    S.adj[drag.id].x = clamp(Math.round(drag.ox + (nx - drag.nx) * 100));
+    S.adj[drag.id].y = clamp(Math.round(drag.oy + (ny - drag.ny) * 100));
+    syncAdjControls(); render();
+  });
+  const endDrag = () => { drag = null; pv.classList.remove('dragging'); };
+  pv.addEventListener('pointerup', endDrag);
+  pv.addEventListener('pointercancel', endDrag);
+
+  /* ================= モード切り替え ================= */
+  function setMode(name) {
+    document.body.classList.toggle('namemode', name === 'name');
+    $('modeFull').setAttribute('aria-pressed', String(name === 'full'));
+    $('modeName').setAttribute('aria-pressed', String(name === 'name'));
+    $('modeHint').textContent = name === 'name'
+      ? 'テンプレートを読み込んだうえで、氏名・肩書・連絡先だけを入れ替えるモードです。ロゴや配色は変更されません。'
+      : '会社ロゴ・色・レイアウトを含めて自由に編集できます。';
+  }
+  $('modeFull').addEventListener('click', () => setMode('full'));
+  $('modeName').addEventListener('click', () => setMode('name'));
+
+  /* ================= テンプレートの入出力 ================= */
+  // 個人情報（氏名・肩書・連絡先など）はテンプレートに含めない
+  const PERSONAL = ['name', 'namesub', 'title', 'qual', 'contact', 'qr'];
+  $('tplSave').addEventListener('click', () => {
+    const withBase = $('tplWithBase').checked;
+    const t = {};
+    for (const [k, v] of Object.entries(S.text)) if (!PERSONAL.includes(k)) t[k] = v;
+    const data = {
+      _format: 'meeting-bg-template', _version: 1,
+      fit:S.fit, zoom:S.zoom, offX:S.offX, offY:S.offY, dim:S.dim, blur:S.blur,
+      bgColor:S.bgColor, gradient:S.gradient, logoSize:S.logoSize,
+      qrEc:S.qrEc, qrSize:S.qrSize, layout:S.layout, marginMode:S.marginMode,
+      font:S.font, textColor:S.textColor, accentColor:S.accentColor,
+      panelOn:S.panelOn, shadowOn:S.shadowOn, adj:S.adj, size:S.size, fmt:S.fmt, quality:S.quality,
+      text: t, logoSrc: S.logoSrc, baseSrc: withBase ? S.baseSrc : null,
+    };
+    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `template_${sanitize(S.text.company) || 'company'}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  });
+  $('tplLoad').addEventListener('click', () => $('tplFile').click());
+  $('tplFile').addEventListener('change', (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    const fr = new FileReader();
+    fr.onload = () => {
+      let d;
+      try { d = JSON.parse(fr.result); } catch { alert('テンプレートを読み込めませんでした。'); return; }
+      if (!d || d._format !== 'meeting-bg-template') { alert('このファイルはテンプレートではありません。'); return; }
+      applyState(d, /*keepPersonal=*/true);
+      setMode('name');
+    };
+    fr.readAsText(f);
+    e.target.value = '';
+  });
+
+  function applyState(d, keepPersonal) {
+    const keys = ['fit','zoom','offX','offY','dim','blur','bgColor','gradient','logoSize','qrEc','qrSize',
+                  'layout','marginMode','font','textColor','accentColor','panelOn','shadowOn','size','fmt','quality'];
+    for (const k of keys) if (d[k] !== undefined) S[k] = d[k];
+    if (d.adj) for (const k of Object.keys(S.adj)) if (d.adj[k]) S.adj[k] = Object.assign({ x:0,y:0,s:100 }, d.adj[k]);
+    if (d.text) for (const [k, v] of Object.entries(d.text)) {
+      if (keepPersonal && PERSONAL.includes(k)) continue;
+      if (k in S.text) S.text[k] = v;
+    }
+    const done = () => { syncFormFromState(); syncBlockOptions(); render(); };
+    let pending = 0;
+    const loadInto = (src, set) => {
+      if (!src) { set(null); return; }
+      pending++;
+      const img = new Image();
+      img.onload = () => { set(img); if (--pending === 0) done(); };
+      img.onerror = () => { set(null); if (--pending === 0) done(); };
+      img.src = src;
+    };
+    if (d.logoSrc !== undefined) { S.logoSrc = d.logoSrc; loadInto(d.logoSrc, (i) => S.logoImg = i); }
+    if (d.baseSrc !== undefined && d.baseSrc) { S.baseSrc = d.baseSrc; loadInto(d.baseSrc, (i) => S.baseImg = i); }
+    if (pending === 0) done();
+  }
+
+  function syncFormFromState() {
+    for (const [id, key] of Object.entries(TEXT_FIELDS)) $(id).value = S.text[key] || '';
+    $('fit').value = S.fit; $('font').value = S.font; $('qrEc').value = S.qrEc;
+    $('sizeSel').value = S.size; $('fmtSel').value = S.fmt;
+    $('bgColor').value = S.bgColor; $('textColor').value = S.textColor; $('accentColor').value = S.accentColor;
+    $('gradient').checked = S.gradient; $('panelOn').checked = S.panelOn; $('shadowOn').checked = S.shadowOn;
+    $('qualityRow').hidden = S.fmt !== 'jpeg';
+    for (const [id, key] of [['zoom','zoom'],['offX','offX'],['offY','offY'],['dim','dim'],['blur','blur'],
+                             ['logoSize','logoSize'],['qrSize','qrSize'],['quality','quality']]) {
+      const el = $(id); el.value = S[key];
+      const out = $(id + 'V'); if (out) out.textContent = S[key] + (id === 'blur' && !S[key] ? '' : '%');
+      if (id === 'blur' && !S[key]) out.textContent = 'なし';
+    }
+    for (const b of $('layouts').querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.layout === S.layout));
+    $('marginSafe').setAttribute('aria-pressed', String(S.marginMode === 'safe'));
+    $('marginWide').setAttribute('aria-pressed', String(S.marginMode === 'wide'));
+    syncAdjControls();
+  }
+
+  /* ================= 自動保存（この端末のブラウザ内のみ） ================= */
+  const LS_KEY = 'meeting-bg-generator-v1';
+  let saveTimer = 0;
+  function saveLocal() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      try {
+        const d = { _format:'meeting-bg-template', _version:1, text:S.text, adj:S.adj, logoSrc:S.logoSrc };
+        for (const k of ['fit','zoom','offX','offY','dim','blur','bgColor','gradient','logoSize','qrEc','qrSize',
+                         'layout','marginMode','font','textColor','accentColor','panelOn','shadowOn','size','fmt','quality']) d[k] = S[k];
+        localStorage.setItem(LS_KEY, JSON.stringify(d));   // 背景画像は容量が大きいため保存しない
+      } catch { /* 容量超過・プライベートモードなどでは黙って諦める */ }
+    }, 800);
+  }
+  function loadLocal() {
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      if (!raw) return false;
+      applyState(JSON.parse(raw), false);
+      return true;
+    } catch { return false; }
+  }
+
+  /* ================= 初期化 ================= */
+  setMargin('safe');
+  setMode('full');
+  if (!loadLocal()) {
+    S.text.company = '〇〇法律事務所';
+    S.text.qual = '弁護士';
+    S.text.name = '山田 太郎';
+    S.text.title = '代表';
+    S.text.catch = 'はじめの一歩を、ともに。';
+  }
+  syncFormFromState();
+  syncBlockOptions();
+  $('legend').hidden = !S.showSafe;
+  $('mirrorNote').hidden = !S.showMirror;
+  render();
+  window.addEventListener('load', render);   // 書体の読み込み完了後に描き直す
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(render);
+})();
+</script>
+</body>
+</html>
