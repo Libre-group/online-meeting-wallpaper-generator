@@ -11,6 +11,8 @@ index.html を実際の Chromium で開き、次を確認する。
   - 縦横比の違う画像を読み込んだとき、自動で「画像全体を入れる」に切り替わること
   - 既定テンプレートを埋め込んだ HTML が、開いた時点で設定済みになること
   - 会社名を改行で複数行書けること（4行まで）
+  - 埋め込みHTMLに背景画像が入り、2回目以降に開いても残ること
+  - マスコット画像を四隅に置け、左右反転でき、埋め込みにも引き継がれること
 
 必要なもの:
     pip install playwright opencv-python-headless numpy
@@ -54,6 +56,15 @@ def make_assets(tmp):
         cv2.line(im, (0, h // 2), (w, h // 2), (255, 0, 0), 8)
         cv2.line(im, (w // 2, 0), (w // 2, h), (255, 0, 0), 8)
         cv2.imwrite(f'{tmp}/ar_{name}.png', im)
+    # 背景が引き継がれたか一目で分かる単色画像
+    green = np.zeros((1080, 1920, 3), np.uint8)
+    green[:, :] = (40, 140, 40)
+    cv2.imwrite(f'{tmp}/green.png', green)
+    # 左半分=赤 / 右半分=青 の非対称なマスコット（左右反転を検出できる）
+    mas = np.zeros((400, 300, 4), np.uint8)
+    cv2.rectangle(mas, (0, 100), (150, 300), (0, 0, 255, 255), -1)
+    cv2.rectangle(mas, (150, 100), (300, 300), (255, 0, 0, 255), -1)
+    cv2.imwrite(f'{tmp}/mascot.png', mas)
 
 QR_URL = 'https://example.com/contact?from=meet'
 
@@ -166,8 +177,10 @@ def main():
         # --- 既定テンプレートを埋め込んだ HTML ---
         print('[既定テンプレートの埋め込み]')
         page.click('#layouts button[data-layout="C"]')
-        page.check('#tplWithBase')
-        page.wait_for_timeout(600)
+        page.set_input_files('#baseFile', f'{tmp}/green.png')
+        page.set_input_files('#mascotFile', f'{tmp}/mascot.png')
+        page.click('#mascotPos button[data-pos="br"]')
+        page.wait_for_timeout(800)   # チェックは入れない（常に含まれるのが正しい挙動）
         with page.expect_download() as dl:
             page.click('#tplEmbed')
         embedded_dir = os.path.join(tmp, 'embedded')
@@ -206,6 +219,76 @@ def main():
         p2.wait_for_timeout(1200)
         check('開き直しても氏名が残る', p2.input_value('#f_name') == '鈴木 一郎', p2.input_value('#f_name'))
         check('開き直しても会社名は既定のまま', p2.input_value('#f_company') == '〇〇法律事務所')
+
+        def embedded_shot(tag):
+            with p2.expect_download() as d:
+                p2.click('#download')
+            path = f'{tmp}/emb_{tag}.png'
+            d.value.save_as(path)
+            return cv2.imread(path)
+
+        def is_green(im):
+            px = im[60, 60]            # 左上は文字もマスコットも無い
+            return bool(px[1] > 80 and px[2] < 90)
+
+        im = embedded_shot('first')
+        check('チェックを入れなくても背景画像が埋め込まれる', is_green(im),
+              f'左上 BGR={tuple(int(v) for v in im[60, 60])}')
+        check('マスコットも埋め込まれる',
+              int(cv2.inRange(im, np.array([0, 0, 120]), np.array([80, 80, 255])).sum()) > 0)
+        check('マスコットの置き場所が引き継がれる',
+              p2.get_attribute('#mascotPos button[data-pos="br"]', 'aria-pressed') == 'true')
+        p2.reload()
+        p2.wait_for_timeout(1500)
+        check('2回目に開いても背景画像が残る', is_green(embedded_shot('second')))
+        p2.reload()
+        p2.wait_for_timeout(1500)
+        check('3回目に開いても背景画像が残る', is_green(embedded_shot('third')))
+
+        # --- マスコット画像 ---
+        print('[マスコット画像]')
+        page.click('#baseClear')
+        page.wait_for_timeout(400)
+
+        def mascot_box():
+            with page.expect_download() as d:
+                page.click('#download')
+            path = f'{tmp}/mas.png'
+            d.value.save_as(path)
+            im = cv2.imread(path)
+            red = cv2.inRange(im, np.array([0, 0, 120]), np.array([80, 80, 255]))
+            blue = cv2.inRange(im, np.array([120, 0, 0]), np.array([255, 80, 80]))
+            ys, xs = np.nonzero(red | blue)
+            ry, rx = np.nonzero(red)
+            by, bx = np.nonzero(blue)
+            return (xs.min(), xs.max(), ys.min(), ys.max(), rx.min() < bx.min())
+
+        for pos, want_left, want_top in [('bl', True, False), ('br', False, False),
+                                         ('tl', True, True), ('tr', False, True)]:
+            page.click(f'#mascotPos button[data-pos="{pos}"]')
+            page.wait_for_timeout(400)
+            x0, x1, y0, y1, red_left = mascot_box()
+            ok = ((x0 < 960) == want_left) and ((y0 < 540) == want_top)
+            check(f'マスコットを{pos}に置ける', ok, f'x={x0}..{x1} y={y0}..{y1}')
+
+        page.click('#mascotPos button[data-pos="bl"]')
+        page.wait_for_timeout(300)
+        _, _, _, _, red_left_before = mascot_box()
+        page.check('#mascotFlip')
+        page.wait_for_timeout(400)
+        _, _, _, _, red_left_after = mascot_box()
+        check('左右反転が効く', red_left_before and not red_left_after,
+              f'反転前に赤が左={red_left_before} / 反転後={red_left_after}')
+        page.uncheck('#mascotFlip')
+
+        page.evaluate("() => { const e = document.getElementById('mascotSize'); e.value = 50; e.dispatchEvent(new Event('input')); }")
+        page.wait_for_timeout(400)
+        _, _, y0, y1, _ = mascot_box()
+        # 画像の塗りは上下半分（400pxのうち y=100..300）なので、指定高さの半分が見える
+        check('大きさの指定が効く', abs((y1 - y0) - 0.50 * 1080 * 0.5) < 20, f'{y1 - y0}px')
+        page.evaluate("() => { const e = document.getElementById('mascotSize'); e.value = 28; e.dispatchEvent(new Event('input')); }")
+        page.click('#mascotClear')
+        page.wait_for_timeout(400)
 
         # --- 会社名の複数行表示 ---
         print('[会社名の複数行]')

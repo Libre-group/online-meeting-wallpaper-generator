@@ -104,8 +104,8 @@
         <button id="tplEmbed">この設定を既定にしたHTMLを書き出す</button>
       </div>
       <input type="file" id="tplFile" accept="application/json" hidden>
-      <label class="tplonly" style="margin-top:6px"><input type="checkbox" id="tplWithBase"> 背景画像もテンプレートに含める（ファイルが大きくなります）</label>
-      <p class="hint tplonly">「この設定を既定にしたHTML」を書き出して共有先のファイルを置き換えると、次からは開いた時点でこの設定が入った状態になります。氏名・肩書・連絡先などの個人情報は含まれません。</p>
+      <label class="tplonly" style="margin-top:6px"><input type="checkbox" id="tplWithBase"> 背景画像をJSONテンプレートにも含める（ファイルが大きくなります）</label>
+      <p class="hint tplonly">「この設定を既定にしたHTML」には、背景画像・ロゴ・マスコットが<b>常に</b>含まれます（上のチェックはJSONテンプレート用です）。書き出したHTMLで共有先のファイルを置き換えると、次からは開いた時点でこの設定が入った状態になります。氏名・肩書・連絡先などの個人情報は含まれません。</p>
     </div>
 
     <div class="card tplonly">
@@ -148,11 +148,29 @@
     </div>
 
     <div class="card tplonly">
-      <h2>2. ロゴ</h2>
+      <h2>2. ロゴ・マスコット画像</h2>
+      <label for="logoFile">ロゴ（文字情報と一緒に並びます。透過PNG推奨）</label>
       <input type="file" id="logoFile" accept="image/*">
       <div class="row tight" style="margin-top:6px"><button class="sm" id="logoClear">ロゴを外す</button></div>
       <label for="logoSize">ロゴの大きさ <span class="val" id="logoSizeV"></span></label>
       <input type="range" id="logoSize" min="3" max="20" value="8">
+
+      <label for="mascotFile" style="margin-top:14px">マスコット画像（独立して好きな位置に置けます。透過PNG推奨）</label>
+      <input type="file" id="mascotFile" accept="image/*">
+      <div class="row tight" style="margin-top:6px"><button class="sm" id="mascotClear">マスコットを外す</button></div>
+      <label for="mascotSize">マスコットの大きさ <span class="val" id="mascotSizeV"></span></label>
+      <input type="range" id="mascotSize" min="5" max="60" value="28">
+      <label>置き場所</label>
+      <div class="segmented" id="mascotPos">
+        <button data-pos="bl" aria-pressed="true">左下</button>
+        <button data-pos="br" aria-pressed="false">右下</button>
+        <button data-pos="tl" aria-pressed="false">左上</button>
+        <button data-pos="tr" aria-pressed="false">右上</button>
+      </div>
+      <div class="checks" style="margin-top:8px">
+        <label><input type="checkbox" id="mascotFlip"> 左右を反転する（内側を向かせる）</label>
+      </div>
+      <p class="hint">プレビュー上でドラッグしても動かせます。細かい位置は「6. 微調整」で調整できます。</p>
     </div>
 
     <div class="card">
@@ -229,6 +247,7 @@
         <option value="sub">副情報</option>
         <option value="catch">キャッチコピー</option>
         <option value="qr">QRコード</option>
+        <option value="mascot">マスコット画像</option>
       </select>
       <div class="grid2">
         <div><label for="adjX">左右位置 <span class="val" id="adjXV"></span></label><input type="range" id="adjX" min="-40" max="40" value="0"></div>
@@ -660,12 +679,14 @@ const QR = (() => {
     baseSrc: null, baseImg: null, logoSrc: null, logoImg: null,
     fit: 'cover', zoom: 100, offX: 0, offY: 0, dim: 18, blur: 0, fillBlur: true,
     bgColor: '#12263f', gradient: true, logoSize: 8,
+    mascotSrc: null, mascotImg: null, mascotSize: 28, mascotPos: 'bl', mascotFlip: false,
     text: { company: '', qual: '', name: '', namesub: '', title: '', contact: '', catch: '', qr: '' },
     qrEc: 'M', qrSize: 13,
     layout: 'A', marginMode: 'safe',
     font: 'gothic', textColor: '#ffffff', accentColor: '#c9a227',
     panelOn: true, shadowOn: true,
-    adj: { main: { x:0,y:0,s:100 }, sub: { x:0,y:0,s:100 }, catch: { x:0,y:0,s:100 }, qr: { x:0,y:0,s:100 } },
+    adj: { main: { x:0,y:0,s:100 }, sub: { x:0,y:0,s:100 }, catch: { x:0,y:0,s:100 },
+           qr: { x:0,y:0,s:100 }, mascot: { x:0,y:0,s:100 } },
     size: '1920x1080', fmt: 'png', quality: 88,
     showSafe: true, showPerson: false, showMirror: false,
   };
@@ -685,6 +706,15 @@ const QR = (() => {
   const rule = (gap) => ({ t:'rule', size: 0.0035, gap: gap == null ? 0.020 : gap });
   const logo = (gap) => ({ t:'logo', size: null, gap: gap == null ? 0.022 : gap });
   const qr   = () => ({ t:'qr', size: null, gap: 0 });
+  const mascotItem = () => ({ t:'mascot', size: null, gap: 0 });
+  // マスコットは文字の並びとは独立した1枚絵として、四隅のいずれかに置く
+  const mascotBlock = (m) => {
+    const pos = S.mascotPos || 'bl';
+    const bottom = pos[0] === 'b', left = pos[1] === 'l';
+    return { id:'mascot', x: left ? m : 1 - m, y: bottom ? 0.97 : 0.05,
+             align: left ? 'left' : 'right', dir: bottom ? 'up' : 'down',
+             panel: false, items: [ mascotItem() ] };
+  };
   // 複数行の要素。改行で分け、maxW を超える行は自動で折り返す
   const lines = (key, size, maxW, opt) => Object.assign(
     { t:'wrap', key, size, maxW, weight: 400, lh: 1.45, maxLines: 0, gap: 0.014 }, opt || {});
@@ -696,6 +726,12 @@ const QR = (() => {
   const ACC = 'accent'; // 色指定のキーワード
 
   function layoutDef(id, m) {
+    const def = baseLayoutDef(id, m);
+    def.blocks = def.blocks.concat([ mascotBlock(m) ]);
+    return def;
+  }
+
+  function baseLayoutDef(id, m) {
     const L = m, R = 1 - m;
     switch (id) {
       case 'A': return {
@@ -829,6 +865,12 @@ const QR = (() => {
         const h = (S.qrSize / 100) * H * scale;
         parts.push({ it, kind:'qr', matrix:q.matrix, w:h, h, gap });
         maxW = Math.max(maxW, h); total += h + gap;
+      } else if (it.t === 'mascot') {
+        if (!S.mascotImg) continue;
+        const h = (S.mascotSize / 100) * H * scale;
+        const w = h * (S.mascotImg.naturalWidth / S.mascotImg.naturalHeight);
+        parts.push({ it, kind:'mascot', w, h, gap });
+        maxW = Math.max(maxW, w); total += h + gap;
       } else if (it.t === 'rule') {
         parts.push({ it, kind:'rule', w:0, h: Math.max(1, it.size * H * scale), gap });
         total += Math.max(1, it.size * H * scale) + gap;
@@ -966,6 +1008,15 @@ const QR = (() => {
         ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
         const qx = block.align === 'right' ? tx - p.w : block.align === 'center' ? tx - p.w / 2 : tx;
         drawQr(ctx, p.matrix, qx, y, p.w);
+      } else if (p.kind === 'mascot') {
+        ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+        const mx = block.align === 'right' ? tx - p.w : block.align === 'center' ? tx - p.w / 2 : tx;
+        if (S.mascotFlip) {
+          ctx.save(); ctx.translate(mx + p.w, y); ctx.scale(-1, 1);
+          ctx.drawImage(S.mascotImg, 0, 0, p.w, p.h); ctx.restore();
+        } else {
+          ctx.drawImage(S.mascotImg, mx, y, p.w, p.h);
+        }
       } else if (p.kind === 'rule') {
         ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
         ctx.fillStyle = S.accentColor;
@@ -1199,6 +1250,19 @@ const QR = (() => {
   $('logoClear').addEventListener('click', () => {
     S.logoImg = null; S.logoSrc = null; $('logoFile').value = ''; render();
   });
+  $('mascotFile').addEventListener('change', (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    readImage(f, (img, src) => { S.mascotImg = img; S.mascotSrc = src; render(); });
+  });
+  $('mascotClear').addEventListener('click', () => {
+    S.mascotImg = null; S.mascotSrc = null; $('mascotFile').value = ''; render();
+  });
+  $('mascotPos').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-pos]'); if (!b) return;
+    S.mascotPos = b.dataset.pos;
+    S.adj.mascot = { x:0, y:0, s: S.adj.mascot.s };   // 置き場所を変えたら微調整はいったん戻す
+    syncFormFromState(); render();
+  });
 
   /* ================= 入力の結び付け ================= */
   function bindRange(id, key, fmt) {
@@ -1221,6 +1285,7 @@ const QR = (() => {
   bindRange('dim', 'dim', pct);
   bindRange('blur', 'blur', (v) => v ? v + '%' : 'なし');
   bindRange('logoSize', 'logoSize', pct);
+  bindRange('mascotSize', 'mascotSize', pct);
   bindRange('qrSize', 'qrSize', pct);
   bindRange('quality', 'quality', pct);
   bindRange('adjX', 'adj.x', pct);
@@ -1252,7 +1317,7 @@ const QR = (() => {
   for (const [id, key] of [['bgColor','bgColor'],['textColor','textColor'],['accentColor','accentColor']]) {
     $(id).addEventListener('input', (e) => { S[key] = e.target.value; render(); });
   }
-  for (const [id, key] of [['gradient','gradient'],['panelOn','panelOn'],['shadowOn','shadowOn'],['fillBlur','fillBlur'],
+  for (const [id, key] of [['gradient','gradient'],['panelOn','panelOn'],['shadowOn','shadowOn'],['fillBlur','fillBlur'],['mascotFlip','mascotFlip'],
                            ['showSafe','showSafe'],['showPerson','showPerson'],['showMirror','showMirror']]) {
     $(id).addEventListener('change', (e) => {
       S[key] = e.target.checked;
@@ -1370,10 +1435,11 @@ const QR = (() => {
       _format: 'meeting-bg-template', _version: 1,
       fit:S.fit, zoom:S.zoom, offX:S.offX, offY:S.offY, dim:S.dim, blur:S.blur, fillBlur:S.fillBlur,
       bgColor:S.bgColor, gradient:S.gradient, logoSize:S.logoSize,
+      mascotSize:S.mascotSize, mascotPos:S.mascotPos, mascotFlip:S.mascotFlip,
       qrEc:S.qrEc, qrSize:S.qrSize, layout:S.layout, marginMode:S.marginMode,
       font:S.font, textColor:S.textColor, accentColor:S.accentColor,
       panelOn:S.panelOn, shadowOn:S.shadowOn, adj:S.adj, size:S.size, fmt:S.fmt, quality:S.quality,
-      text: t, logoSrc: S.logoSrc, baseSrc: withBase ? S.baseSrc : null,
+      text: t, logoSrc: S.logoSrc, mascotSrc: S.mascotSrc, baseSrc: withBase ? S.baseSrc : null,
     };
   }
 
@@ -1387,8 +1453,24 @@ const QR = (() => {
      この画面の内容をそのまま既定値にした index.html を作る。共有先のファイルを
      置き換えれば、次からは開いた時点でその設定が入った状態になる。
      外部通信は行わず、表示中のページの DOM を複製して書き出す。 */
+  // 埋め込み用に画像を軽量化する（しきい値を超えたときだけ JPEG に再圧縮）。
+  // 背景画像にのみ使う（ロゴ・マスコットは透過を保つため触らない）
+  function shrinkForEmbed(src, img, limitBytes) {
+    if (!src || !img || src.length * 0.75 <= limitBytes) return { src, shrunk: false };
+    const maxW = 2560;
+    const k = Math.min(1, maxW / img.naturalWidth);
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(img.naturalWidth * k);
+    cv.height = Math.round(img.naturalHeight * k);
+    cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+    return { src: cv.toDataURL('image/jpeg', 0.85), shrunk: true };
+  }
+
   $('tplEmbed').addEventListener('click', () => {
-    const tpl = buildTemplateObject($('tplWithBase').checked);
+    // 埋め込みHTMLには背景画像・ロゴ・マスコットを常に含める
+    const tpl = buildTemplateObject(true);
+    const shrunk = shrinkForEmbed(S.baseSrc, S.baseImg, 1.5 * 1024 * 1024);
+    tpl.baseSrc = shrunk.src;
     tpl._stamp = new Date().toISOString();
     const root = document.documentElement.cloneNode(true);
     root.querySelector('#bgSwatches').innerHTML = '';   // 実行時に生成した要素は書き出さない
@@ -1398,9 +1480,15 @@ const QR = (() => {
     // 埋め込んだ JSON がスクリプトの終了タグとして解釈されないよう < をエスケープする
     root.querySelector('#embedded-template').textContent =
       JSON.stringify(tpl).replace(/</g, '\\u003c');
-    saveBlob(new Blob(['<!DOCTYPE html>\n' + root.outerHTML + '\n'], { type: 'text/html' }), 'index.html');
+    const blob = new Blob(['<!DOCTYPE html>\n' + root.outerHTML + '\n'], { type: 'text/html' });
+    saveBlob(blob, 'index.html');
     S._embeddedStamp = tpl._stamp;   // 書き出した本人が差し替えモードに飛ばされないように
-    showEmbeddedInfo(tpl._stamp, true);
+    const el = $('embeddedInfo');
+    el.hidden = false;
+    el.textContent = `既定テンプレート入りの index.html を書き出しました（約 ${(blob.size / 1024 / 1024).toFixed(1)} MB）。`
+      + (shrunk.shrunk ? '背景画像が大きかったため、JPEG・最大2560px に軽量化して埋め込みました。' : '')
+      + '共有先のファイルを置き換えてください。';
+    $('tplReset').hidden = false;
   });
 
   $('tplReset').addEventListener('click', () => {
@@ -1424,7 +1512,8 @@ const QR = (() => {
   });
 
   function applyState(d, keepPersonal) {
-    const keys = ['fit','zoom','offX','offY','dim','blur','fillBlur','bgColor','gradient','logoSize','qrEc','qrSize',
+    const keys = ['fit','zoom','offX','offY','dim','blur','fillBlur','bgColor','gradient','logoSize',
+                  'mascotSize','mascotPos','mascotFlip','qrEc','qrSize',
                   'layout','marginMode','font','textColor','accentColor','panelOn','shadowOn','size','fmt','quality'];
     for (const k of keys) if (d[k] !== undefined) S[k] = d[k];
     if (d.adj) for (const k of Object.keys(S.adj)) if (d.adj[k]) S.adj[k] = Object.assign({ x:0,y:0,s:100 }, d.adj[k]);
@@ -1443,6 +1532,7 @@ const QR = (() => {
       img.src = src;
     };
     if (d.logoSrc !== undefined) { S.logoSrc = d.logoSrc; loadInto(d.logoSrc, (i) => S.logoImg = i); }
+    if (d.mascotSrc !== undefined) { S.mascotSrc = d.mascotSrc; loadInto(d.mascotSrc, (i) => S.mascotImg = i); }
     if (d.baseSrc !== undefined && d.baseSrc) { S.baseSrc = d.baseSrc; loadInto(d.baseSrc, (i) => S.baseImg = i); }
     if (pending === 0) done();
   }
@@ -1455,9 +1545,13 @@ const QR = (() => {
     $('bgColor').value = S.bgColor; $('textColor').value = S.textColor; $('accentColor').value = S.accentColor;
     $('gradient').checked = S.gradient; $('panelOn').checked = S.panelOn; $('shadowOn').checked = S.shadowOn;
     $('fillBlur').checked = S.fillBlur;
+    $('mascotFlip').checked = S.mascotFlip;
+    for (const b of $('mascotPos').querySelectorAll('button')) {
+      b.setAttribute('aria-pressed', String(b.dataset.pos === S.mascotPos));
+    }
     $('qualityRow').hidden = S.fmt !== 'jpeg';
     for (const [id, key] of [['zoom','zoom'],['offX','offX'],['offY','offY'],['dim','dim'],['blur','blur'],
-                             ['logoSize','logoSize'],['qrSize','qrSize'],['quality','quality']]) {
+                             ['logoSize','logoSize'],['mascotSize','mascotSize'],['qrSize','qrSize'],['quality','quality']]) {
       const el = $(id); el.value = S[key];
       const out = $(id + 'V'); if (out) out.textContent = S[key] + (id === 'blur' && !S[key] ? '' : '%');
       if (id === 'blur' && !S[key]) out.textContent = 'なし';
@@ -1475,9 +1569,11 @@ const QR = (() => {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       try {
-        const d = { _format:'meeting-bg-template', _version:1, text:S.text, adj:S.adj, logoSrc:S.logoSrc,
+        const d = { _format:'meeting-bg-template', _version:1, text:S.text, adj:S.adj,
+                    logoSrc:S.logoSrc, mascotSrc:S.mascotSrc,
                     _mode: currentMode, _embeddedStamp: S._embeddedStamp || null };
-        for (const k of ['fit','zoom','offX','offY','dim','blur','fillBlur','bgColor','gradient','logoSize','qrEc','qrSize',
+        for (const k of ['fit','zoom','offX','offY','dim','blur','fillBlur','bgColor','gradient','logoSize',
+                  'mascotSize','mascotPos','mascotFlip','qrEc','qrSize',
                          'layout','marginMode','font','textColor','accentColor','panelOn','shadowOn','size','fmt','quality']) d[k] = S[k];
         localStorage.setItem(LS_KEY, JSON.stringify(d));   // 背景画像は容量が大きいため保存しない
       } catch { /* 容量超過・プライベートモードなどでは黙って諦める */ }
@@ -1529,7 +1625,9 @@ const QR = (() => {
     state._embeddedStamp = embedded._stamp;
     mode = 'name';
   } else if (saved) {
-    state = saved;
+    // 端末の保存内容には背景画像が入らない（容量の都合）。
+    // 埋め込みを土台にして保存内容を上から重ね、背景画像が失われないようにする。
+    state = embedded ? mergeTemplate(embedded, saved, false) : saved;
     mode = saved._mode || mode;
   } else if (embedded) {
     state = Object.assign({}, embedded, { _embeddedStamp: embedded._stamp });
