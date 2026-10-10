@@ -94,27 +94,37 @@
         </div>
       </div>
       <p class="hint" id="modeHint">会社ロゴ・色・レイアウトを含めて自由に編集できます。</p>
+      <p class="hint" id="embeddedInfo" hidden></p>
       <div class="row" style="margin-top:8px">
-        <button id="tplSave">テンプレートを書き出す</button>
-        <button id="tplLoad">テンプレートを読み込む</button>
+        <button id="tplSave" class="tplonly">テンプレートを書き出す</button>
+        <button id="tplLoad" class="tplonly">テンプレートを読み込む</button>
+        <button id="tplReset" hidden>既定テンプレートに戻す</button>
+      </div>
+      <div class="row tplonly" style="margin-top:6px">
+        <button id="tplEmbed">この設定を既定にしたHTMLを書き出す</button>
       </div>
       <input type="file" id="tplFile" accept="application/json" hidden>
       <label class="tplonly" style="margin-top:6px"><input type="checkbox" id="tplWithBase"> 背景画像もテンプレートに含める（ファイルが大きくなります）</label>
+      <p class="hint tplonly">「この設定を既定にしたHTML」を書き出して共有先のファイルを置き換えると、次からは開いた時点でこの設定が入った状態になります。氏名・肩書・連絡先などの個人情報は含まれません。</p>
     </div>
 
     <div class="card tplonly">
       <h2>1. ベース背景</h2>
       <label for="baseFile">背景画像（未指定なら下の背景色を使用）</label>
       <input type="file" id="baseFile" accept="image/*">
-      <div class="row tight" style="margin-top:6px">
+      <div id="baseNotice" class="warn" hidden></div>
+      <p class="hint" id="baseInfo" hidden></p>
+      <div class="row tight" style="margin-top:6px;flex-wrap:wrap">
+        <button class="sm" id="fitContain">画像全体を入れる</button>
+        <button class="sm" id="fitCover">全面に広げる</button>
         <button class="sm" id="baseClear">画像を外す</button>
       </div>
       <div class="grid2">
         <div>
           <label for="fit">画像の合わせ方</label>
           <select id="fit">
-            <option value="cover">全面に合わせる（推奨）</option>
-            <option value="contain">全体を収める</option>
+            <option value="cover">全面に広げる（はみ出しは切り取る）</option>
+            <option value="contain">画像全体を入れる（余白ができる）</option>
           </select>
         </div>
         <div>
@@ -124,7 +134,7 @@
       </div>
       <div class="swatches" id="bgSwatches"></div>
       <label for="zoom">ズーム <span class="val" id="zoomV"></span></label>
-      <input type="range" id="zoom" min="100" max="250" value="100">
+      <input type="range" id="zoom" min="25" max="250" value="100">
       <div class="grid2">
         <div><label for="offX">左右位置 <span class="val" id="offXV"></span></label><input type="range" id="offX" min="-50" max="50" value="0"></div>
         <div><label for="offY">上下位置 <span class="val" id="offYV"></span></label><input type="range" id="offY" min="-50" max="50" value="0"></div>
@@ -133,6 +143,7 @@
         <div><label for="dim">暗くする <span class="val" id="dimV"></span></label><input type="range" id="dim" min="0" max="70" value="18"></div>
         <div><label for="blur">ぼかし <span class="val" id="blurV"></span></label><input type="range" id="blur" min="0" max="20" value="0"></div>
       </div>
+      <label><input type="checkbox" id="fillBlur" checked> 余白を画像のぼかしで埋める</label>
       <p class="hint">写真をそのまま使うと文字が読みにくくなります。「暗くする」は可読性のための機能です。</p>
     </div>
 
@@ -312,6 +323,8 @@
     </div>
   </div>
 </div>
+<!-- 既定テンプレート。「この設定を既定にしたHTMLを書き出す」で書き換わります（手で貼り替えても構いません） -->
+<script type="application/json" id="embedded-template">null</script>
 <script>
 // ===== QR-ENCODER-BEGIN =====
 // QRコード生成（バイトモード / 型番1-15）。外部通信・外部ライブラリなしで完結させるための自前実装。
@@ -643,7 +656,7 @@ const QR = (() => {
 
   const S = {
     baseSrc: null, baseImg: null, logoSrc: null, logoImg: null,
-    fit: 'cover', zoom: 100, offX: 0, offY: 0, dim: 18, blur: 0,
+    fit: 'cover', zoom: 100, offX: 0, offY: 0, dim: 18, blur: 0, fillBlur: true,
     bgColor: '#12263f', gradient: true, logoSize: 8,
     text: { company: '', qual: '', name: '', namesub: '', title: '', contact: '', catch: '', qr: '' },
     qrEc: 'M', qrSize: 13,
@@ -819,20 +832,34 @@ const QR = (() => {
   }
 
   /* ================= 描画 ================= */
+  // 画像を貼る矩形を求める。mode='cover' ははみ出させて全面を覆い、'contain' は全体を収める
+  function imageRect(img, W, H, mode, zoom, offX, offY, overdraw) {
+    const ar = img.naturalWidth / img.naturalHeight, car = W / H;
+    let dw, dh;
+    if (mode === 'cover') { if (ar > car) { dh = H; dw = H * ar; } else { dw = W; dh = W / ar; } }
+    else { if (ar > car) { dw = W; dh = W / ar; } else { dh = H; dw = H * ar; } }
+    dw *= (zoom / 100) * overdraw; dh *= (zoom / 100) * overdraw;
+    return { dx: (W - dw) / 2 + (offX / 100) * W, dy: (H - dh) / 2 + (offY / 100) * H, dw, dh };
+  }
+
   function drawBackground(ctx, W, H) {
+    const canBlur = 'filter' in ctx;
     if (S.baseImg) {
       const img = S.baseImg;
-      const ar = img.naturalWidth / img.naturalHeight, car = W / H;
-      let dw, dh;
-      if (S.fit === 'cover') { if (ar > car) { dh = H; dw = H * ar; } else { dw = W; dh = W / ar; } }
-      else { if (ar > car) { dw = W; dh = W / ar; } else { dh = H; dw = H * ar; } }
-      const over = S.blur > 0 ? 1 + S.blur / 60 : 1;   // ぼかしで端が透けるのを防ぐ
-      dw *= (S.zoom / 100) * over; dh *= (S.zoom / 100) * over;
-      const dx = (W - dw) / 2 + (S.offX / 100) * W;
-      const dy = (H - dh) / 2 + (S.offY / 100) * H;
       ctx.fillStyle = S.bgColor; ctx.fillRect(0, 0, W, H);
-      if (S.blur > 0 && 'filter' in ctx) ctx.filter = `blur(${(S.blur / 100) * H * 0.06}px)`;
-      ctx.drawImage(img, dx, dy, dw, dh);
+      const over = S.blur > 0 ? 1 + S.blur / 60 : 1;   // ぼかしで端が透けるのを防ぐ
+      const r = imageRect(img, W, H, S.fit, S.zoom, S.offX, S.offY, over);
+      // 画面を覆い切らないとき（全体を入れる・縮小したとき）は、余白を同じ画像のぼかしで埋める
+      const covers = r.dx <= 0.5 && r.dy <= 0.5 && r.dx + r.dw >= W - 0.5 && r.dy + r.dh >= H - 0.5;
+      if (!covers && S.fillBlur && canBlur) {
+        const b = imageRect(img, W, H, 'cover', 112, 0, 0, 1);
+        ctx.filter = `blur(${H * 0.035}px)`;
+        ctx.drawImage(img, b.dx, b.dy, b.dw, b.dh);
+        ctx.filter = 'none';
+        ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(0, 0, W, H);
+      }
+      if (S.blur > 0 && canBlur) ctx.filter = `blur(${(S.blur / 100) * H * 0.06}px)`;
+      ctx.drawImage(img, r.dx, r.dy, r.dw, r.dh);
       ctx.filter = 'none';
     } else if (S.gradient) {
       const g = ctx.createLinearGradient(0, 0, W, H);
@@ -1067,15 +1094,19 @@ const QR = (() => {
 
   function sanitize(s) { return (s || '').trim().replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 24); }
 
+  function saveBlob(blob, filename) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }
+
   $('download').addEventListener('click', async () => {
     const blob = await toBlob(exportCanvas());
     if (!blob) return;
     const nm = sanitize(S.text.name) || sanitize(S.text.company) || 'background';
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `bg_${S.layout}_${S.size}_${nm}.${S.fmt === 'png' ? 'png' : 'jpg'}`;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    saveBlob(blob, `bg_${S.layout}_${S.size}_${nm}.${S.fmt === 'png' ? 'png' : 'jpg'}`);
   });
 
   /* ================= QRの状態表示 ================= */
@@ -1102,12 +1133,53 @@ const QR = (() => {
     fr.readAsDataURL(file);
   }
 
+  // 900:1600 のような値を 9:16 と表す
+  function describeRatio(w, h) {
+    const gcd = (a, b) => b ? gcd(b, a % b) : a;
+    const d = gcd(w, h), rw = w / d, rh = h / d;
+    return (rw > 40 || rh > 40) ? (w / h).toFixed(2) + ' : 1' : `${rw}:${rh}`;
+  }
+
+  function applyFit(mode) {
+    S.fit = mode; S.zoom = 100; S.offX = 0; S.offY = 0;
+    $('baseNotice').hidden = true;
+    syncFormFromState(); render();
+  }
+  $('fitContain').addEventListener('click', () => applyFit('contain'));
+  $('fitCover').addEventListener('click', () => applyFit('cover'));
+
+  function onBaseImage(img, src) {
+    S.baseImg = img; S.baseSrc = src;
+    const [ow, oh] = S.size.split('x').map(Number);
+    const car = ow / oh, ar = img.naturalWidth / img.naturalHeight;
+    // 「全面に広げる」にしたときに切り取られる割合
+    const cut = ar > car ? 1 - car / ar : 1 - ar / car;
+    const info = $('baseInfo');
+    info.hidden = false;
+    info.textContent = `読み込んだ画像: ${img.naturalWidth}×${img.naturalHeight}（${describeRatio(img.naturalWidth, img.naturalHeight)}）`;
+    // 画像を入れ替えたら、その画像に合った既定から始める
+    S.zoom = 100; S.offX = 0; S.offY = 0;
+    S.fit = cut > 0.08 ? 'contain' : 'cover';
+    const notice = $('baseNotice');
+    if (cut > 0.08) {
+      notice.hidden = false;
+      notice.textContent = `この画像は出力サイズ（${ow}×${oh} / 16:9）と縦横比が違います。`
+        + `「全面に広げる」のままだと${ar > car ? '左右' : '上下'}が約${Math.round(cut * 100)}%切り取られるため、`
+        + `「画像全体を入れる」に切り替えました。余白は同じ画像のぼかしで埋めています。`
+        + `切り取ってよい場合は「全面に広げる」を押してください。`;
+    } else {
+      notice.hidden = true;
+    }
+    syncFormFromState(); render();
+  }
+
   $('baseFile').addEventListener('change', (e) => {
     const f = e.target.files[0]; if (!f) return;
-    readImage(f, (img, src) => { S.baseImg = img; S.baseSrc = src; render(); });
+    readImage(f, onBaseImage);
   });
   $('baseClear').addEventListener('click', () => {
-    S.baseImg = null; S.baseSrc = null; $('baseFile').value = ''; render();
+    S.baseImg = null; S.baseSrc = null; $('baseFile').value = '';
+    $('baseInfo').hidden = true; $('baseNotice').hidden = true; render();
   });
   $('logoFile').addEventListener('change', (e) => {
     const f = e.target.files[0]; if (!f) return;
@@ -1159,7 +1231,7 @@ const QR = (() => {
   for (const [id, key] of [['bgColor','bgColor'],['textColor','textColor'],['accentColor','accentColor']]) {
     $(id).addEventListener('input', (e) => { S[key] = e.target.value; render(); });
   }
-  for (const [id, key] of [['gradient','gradient'],['panelOn','panelOn'],['shadowOn','shadowOn'],
+  for (const [id, key] of [['gradient','gradient'],['panelOn','panelOn'],['shadowOn','shadowOn'],['fillBlur','fillBlur'],
                            ['showSafe','showSafe'],['showPerson','showPerson'],['showMirror','showMirror']]) {
     $(id).addEventListener('change', (e) => {
       S[key] = e.target.checked;
@@ -1254,7 +1326,9 @@ const QR = (() => {
   pv.addEventListener('pointercancel', endDrag);
 
   /* ================= モード切り替え ================= */
+  let currentMode = 'full';
   function setMode(name) {
+    currentMode = name;
     document.body.classList.toggle('namemode', name === 'name');
     $('modeFull').setAttribute('aria-pressed', String(name === 'full'));
     $('modeName').setAttribute('aria-pressed', String(name === 'name'));
@@ -1268,25 +1342,50 @@ const QR = (() => {
   /* ================= テンプレートの入出力 ================= */
   // 個人情報（氏名・肩書・連絡先など）はテンプレートに含めない
   const PERSONAL = ['name', 'namesub', 'title', 'qual', 'contact', 'qr'];
-  $('tplSave').addEventListener('click', () => {
-    const withBase = $('tplWithBase').checked;
+  function buildTemplateObject(withBase) {
     const t = {};
     for (const [k, v] of Object.entries(S.text)) if (!PERSONAL.includes(k)) t[k] = v;
-    const data = {
+    return {
       _format: 'meeting-bg-template', _version: 1,
-      fit:S.fit, zoom:S.zoom, offX:S.offX, offY:S.offY, dim:S.dim, blur:S.blur,
+      fit:S.fit, zoom:S.zoom, offX:S.offX, offY:S.offY, dim:S.dim, blur:S.blur, fillBlur:S.fillBlur,
       bgColor:S.bgColor, gradient:S.gradient, logoSize:S.logoSize,
       qrEc:S.qrEc, qrSize:S.qrSize, layout:S.layout, marginMode:S.marginMode,
       font:S.font, textColor:S.textColor, accentColor:S.accentColor,
       panelOn:S.panelOn, shadowOn:S.shadowOn, adj:S.adj, size:S.size, fmt:S.fmt, quality:S.quality,
       text: t, logoSrc: S.logoSrc, baseSrc: withBase ? S.baseSrc : null,
     };
-    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `template_${sanitize(S.text.company) || 'company'}.json`;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }
+
+  $('tplSave').addEventListener('click', () => {
+    const data = buildTemplateObject($('tplWithBase').checked);
+    saveBlob(new Blob([JSON.stringify(data)], { type: 'application/json' }),
+             `template_${sanitize(S.text.company) || 'company'}.json`);
+  });
+
+  /* ---- 既定テンプレートを埋め込んだ HTML を書き出す ----
+     この画面の内容をそのまま既定値にした index.html を作る。共有先のファイルを
+     置き換えれば、次からは開いた時点でその設定が入った状態になる。
+     外部通信は行わず、表示中のページの DOM を複製して書き出す。 */
+  $('tplEmbed').addEventListener('click', () => {
+    const tpl = buildTemplateObject($('tplWithBase').checked);
+    tpl._stamp = new Date().toISOString();
+    const root = document.documentElement.cloneNode(true);
+    root.querySelector('#bgSwatches').innerHTML = '';   // 実行時に生成した要素は書き出さない
+    const body = root.querySelector('body'); if (body) body.className = '';
+    const warn = root.querySelector('#sizeWarn'); if (warn) warn.setAttribute('hidden', '');
+    const note = root.querySelector('#baseNotice'); if (note) note.setAttribute('hidden', '');
+    // 埋め込んだ JSON がスクリプトの終了タグとして解釈されないよう < をエスケープする
+    root.querySelector('#embedded-template').textContent =
+      JSON.stringify(tpl).replace(/</g, '\\u003c');
+    saveBlob(new Blob(['<!DOCTYPE html>\n' + root.outerHTML + '\n'], { type: 'text/html' }), 'index.html');
+    S._embeddedStamp = tpl._stamp;   // 書き出した本人が差し替えモードに飛ばされないように
+    showEmbeddedInfo(tpl._stamp, true);
+  });
+
+  $('tplReset').addEventListener('click', () => {
+    const emb = readEmbedded();
+    if (!emb) return;
+    applyState(emb, /*keepPersonal=*/true);   // 氏名などはそのまま、配色とレイアウトを既定に戻す
   });
   $('tplLoad').addEventListener('click', () => $('tplFile').click());
   $('tplFile').addEventListener('change', (e) => {
@@ -1304,7 +1403,7 @@ const QR = (() => {
   });
 
   function applyState(d, keepPersonal) {
-    const keys = ['fit','zoom','offX','offY','dim','blur','bgColor','gradient','logoSize','qrEc','qrSize',
+    const keys = ['fit','zoom','offX','offY','dim','blur','fillBlur','bgColor','gradient','logoSize','qrEc','qrSize',
                   'layout','marginMode','font','textColor','accentColor','panelOn','shadowOn','size','fmt','quality'];
     for (const k of keys) if (d[k] !== undefined) S[k] = d[k];
     if (d.adj) for (const k of Object.keys(S.adj)) if (d.adj[k]) S.adj[k] = Object.assign({ x:0,y:0,s:100 }, d.adj[k]);
@@ -1333,6 +1432,7 @@ const QR = (() => {
     $('sizeSel').value = S.size; $('fmtSel').value = S.fmt;
     $('bgColor').value = S.bgColor; $('textColor').value = S.textColor; $('accentColor').value = S.accentColor;
     $('gradient').checked = S.gradient; $('panelOn').checked = S.panelOn; $('shadowOn').checked = S.shadowOn;
+    $('fillBlur').checked = S.fillBlur;
     $('qualityRow').hidden = S.fmt !== 'jpeg';
     for (const [id, key] of [['zoom','zoom'],['offX','offX'],['offY','offY'],['dim','dim'],['blur','blur'],
                              ['logoSize','logoSize'],['qrSize','qrSize'],['quality','quality']]) {
@@ -1353,32 +1453,77 @@ const QR = (() => {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       try {
-        const d = { _format:'meeting-bg-template', _version:1, text:S.text, adj:S.adj, logoSrc:S.logoSrc };
-        for (const k of ['fit','zoom','offX','offY','dim','blur','bgColor','gradient','logoSize','qrEc','qrSize',
+        const d = { _format:'meeting-bg-template', _version:1, text:S.text, adj:S.adj, logoSrc:S.logoSrc,
+                    _mode: currentMode, _embeddedStamp: S._embeddedStamp || null };
+        for (const k of ['fit','zoom','offX','offY','dim','blur','fillBlur','bgColor','gradient','logoSize','qrEc','qrSize',
                          'layout','marginMode','font','textColor','accentColor','panelOn','shadowOn','size','fmt','quality']) d[k] = S[k];
         localStorage.setItem(LS_KEY, JSON.stringify(d));   // 背景画像は容量が大きいため保存しない
       } catch { /* 容量超過・プライベートモードなどでは黙って諦める */ }
     }, 800);
   }
-  function loadLocal() {
+
+  /* ================= 既定テンプレート（HTMLに埋め込んだもの） ================= */
+  function readEmbedded() {
+    const el = document.getElementById('embedded-template');
+    if (!el) return null;
     try {
-      const raw = localStorage.getItem(LS_KEY);
-      if (!raw) return false;
-      applyState(JSON.parse(raw), false);
-      return true;
-    } catch { return false; }
+      const d = JSON.parse(el.textContent);
+      return (d && d._format === 'meeting-bg-template') ? d : null;
+    } catch { return null; }
+  }
+  function readSaved() {
+    try { const r = localStorage.getItem(LS_KEY); return r ? JSON.parse(r) : null; } catch { return null; }
+  }
+  // base の上に top を重ねる。keepPersonal なら個人情報は base 側を残す
+  function mergeTemplate(base, top, keepPersonal) {
+    const out = Object.assign({}, base, top);
+    out.text = Object.assign({}, base.text || {});
+    for (const [k, v] of Object.entries(top.text || {})) {
+      if (keepPersonal && PERSONAL.includes(k)) continue;
+      out.text[k] = v;
+    }
+    return out;
+  }
+  function showEmbeddedInfo(stamp, justSaved) {
+    const el = $('embeddedInfo');
+    const d = new Date(stamp);
+    const when = isNaN(d) ? stamp : `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
+    el.hidden = false;
+    el.textContent = justSaved
+      ? `既定テンプレート入りの index.html を書き出しました。共有先のファイルを置き換えてください。`
+      : `このファイルには既定テンプレートが入っています（${when} 書き出し）。`;
+    $('tplReset').hidden = false;
   }
 
   /* ================= 初期化 ================= */
   setMargin('safe');
-  setMode('full');
-  if (!loadLocal()) {
+  const embedded = readEmbedded();
+  const saved = readSaved();
+  let state = null;
+  let mode = embedded ? 'name' : 'full';
+  if (saved && embedded && saved._embeddedStamp !== embedded._stamp) {
+    // 既定テンプレートが更新された: 氏名などは手元のものを残し、配色・レイアウトを入れ替える
+    state = mergeTemplate(saved, embedded, true);
+    state._embeddedStamp = embedded._stamp;
+    mode = 'name';
+  } else if (saved) {
+    state = saved;
+    mode = saved._mode || mode;
+  } else if (embedded) {
+    state = Object.assign({}, embedded, { _embeddedStamp: embedded._stamp });
+  }
+  setMode(mode);
+  if (state) {
+    S._embeddedStamp = state._embeddedStamp || null;
+    applyState(state, false);
+  } else {
     S.text.company = '〇〇法律事務所';
     S.text.qual = '弁護士';
     S.text.name = '山田 太郎';
     S.text.title = '代表';
     S.text.catch = 'はじめの一歩を、ともに。';
   }
+  if (embedded) showEmbeddedInfo(embedded._stamp, false);
   syncFormFromState();
   syncBlockOptions();
   $('legend').hidden = !S.showSafe;

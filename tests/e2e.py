@@ -8,6 +8,8 @@ index.html を実際の Chromium で開き、次を確認する。
   - 書き出した画像に入った QR コードが実際に読み取れること
   - 会議ツールがタイルを 4:3 / 1:1 に切り抜いても QR が残ること（セーフゾーンの検証）
   - テンプレートに個人情報（氏名・肩書・連絡先など）が含まれないこと
+  - 縦横比の違う画像を読み込んだとき、自動で「画像全体を入れる」に切り替わること
+  - 既定テンプレートを埋め込んだ HTML が、開いた時点で設定済みになること
 
 必要なもの:
     pip install playwright opencv-python-headless numpy
@@ -44,6 +46,13 @@ def make_assets(tmp):
     cv2.rectangle(logo, (10, 60), (590, 140), (255, 255, 255, 255), -1)
     cv2.putText(logo, 'LOGO', (60, 125), cv2.FONT_HERSHEY_DUPLEX, 2.0, (90, 40, 20, 255), 4)
     cv2.imwrite(f'{tmp}/logo.png', logo)
+    # 縦横比の確認用。赤枠と中央十字を入れ、切り取られた範囲が分かるようにする
+    for name, (w, h) in {'4x3': (1600, 1200), 'portrait': (900, 1600), '16x9': (1920, 1080)}.items():
+        im = np.full((h, w, 3), 200, np.uint8)
+        cv2.rectangle(im, (0, 0), (w - 1, h - 1), (0, 0, 255), 24)
+        cv2.line(im, (0, h // 2), (w, h // 2), (255, 0, 0), 8)
+        cv2.line(im, (w // 2, 0), (w // 2, h), (255, 0, 0), 8)
+        cv2.imwrite(f'{tmp}/ar_{name}.png', im)
 
 QR_URL = 'https://example.com/contact?from=meet'
 
@@ -122,6 +131,80 @@ def main():
         personal = [k for k in ('name', 'namesub', 'title', 'qual', 'contact', 'qr') if tpl['text'].get(k)]
         check('テンプレートに個人情報が含まれない', not personal, str(personal))
         check('テンプレートに会社名が含まれる', tpl['text'].get('company') == '〇〇法律事務所')
+
+        # --- 縦横比の違う画像の扱い ---
+        print('[画像の合わせ方]')
+        page.set_input_files('#baseFile', f'{tmp}/ar_portrait.png')
+        page.wait_for_timeout(800)
+        check('縦長画像で自動的に「画像全体を入れる」になる', page.input_value('#fit') == 'contain',
+              page.input_value('#fit'))
+        check('切り取り率を知らせるメッセージが出る', '約68%' in page.text_content('#baseNotice'),
+              page.text_content('#baseNotice')[:60])
+        check('読み込んだ画像の縦横比を表示する', '9:16' in page.text_content('#baseInfo'),
+              page.text_content('#baseInfo'))
+        with page.expect_download() as dl:
+            page.click('#download')
+        dl.value.save_as(f'{tmp}/ar_out.png')
+        im = cv2.imread(f'{tmp}/ar_out.png')
+        red = ((im[:, :, 2].astype(int) - im[:, :, 0]) > 60) & ((im[:, :, 2].astype(int) - im[:, :, 1]) > 60)
+        xs = np.nonzero(red.any(axis=0))[0]
+        check('縦長画像の左右の端まで写っている',
+              len(xs) > 0 and xs.min() > 50 and xs.max() < im.shape[1] - 50,
+              f'x={xs.min() if len(xs) else "-"}..{xs.max() if len(xs) else "-"}')
+        page.click('#fitCover')
+        page.wait_for_timeout(300)
+        check('「全面に広げる」で戻せる', page.input_value('#fit') == 'cover')
+        check('ズームを100%未満にできる', page.get_attribute('#zoom', 'min') == '25')
+        page.set_input_files('#baseFile', f'{tmp}/ar_16x9.png')
+        page.wait_for_timeout(800)
+        check('16:9 の画像では切り替えない', page.input_value('#fit') == 'cover', page.input_value('#fit'))
+        check('16:9 の画像ではメッセージを出さない', page.locator('#baseNotice').is_hidden())
+        page.set_input_files('#baseFile', f'{tmp}/base.png')
+        page.wait_for_timeout(600)
+
+        # --- 既定テンプレートを埋め込んだ HTML ---
+        print('[既定テンプレートの埋め込み]')
+        page.click('#layouts button[data-layout="C"]')
+        page.check('#tplWithBase')
+        page.wait_for_timeout(600)
+        with page.expect_download() as dl:
+            page.click('#tplEmbed')
+        embedded_dir = os.path.join(tmp, 'embedded')
+        os.makedirs(embedded_dir, exist_ok=True)
+        embedded_page = os.path.join(embedded_dir, 'index.html')
+        dl.value.save_as(embedded_page)
+        check('HTML が書き出される', os.path.getsize(embedded_page) > 50_000,
+              f'{os.path.getsize(embedded_page)} bytes')
+
+        # localStorage のない状態（別のブラウザ）で開き直す
+        ctx2 = browser.new_context(viewport={'width': 1500, 'height': 1200})
+        p2 = ctx2.new_page()
+        p2.on('console', lambda m: errors.append(f'embedded console.{m.type}: {m.text}') if m.type == 'error' else None)
+        p2.on('pageerror', lambda e: errors.append(f'embedded pageerror: {e}'))
+        p2.goto('file://' + embedded_page)
+        p2.wait_for_timeout(1200)
+        check('開いた時点で会社名が入っている', p2.input_value('#f_company') == '〇〇法律事務所',
+              p2.input_value('#f_company'))
+        check('開いた時点でレイアウトが引き継がれている',
+              p2.get_attribute('#layouts button[data-layout="C"]', 'aria-pressed') == 'true')
+        check('氏名は引き継がれない（個人情報）', p2.input_value('#f_name') == '', repr(p2.input_value('#f_name')))
+        check('連絡先も引き継がれない', p2.input_value('#f_contact') == '', repr(p2.input_value('#f_contact')))
+        check('「氏名の差し替えのみ」モードで開く', p2.get_attribute('#modeName', 'aria-pressed') == 'true')
+        check('既定テンプレートが入っている旨の案内が出る', not p2.locator('#embeddedInfo').is_hidden())
+        p2.click('#modeFull')
+        p2.wait_for_timeout(300)
+        check('テンプレート編集モードに戻せる', p2.locator('#accentColor').is_visible())
+        p2.fill('#f_name', '鈴木 一郎')
+        p2.wait_for_timeout(600)
+        with p2.expect_download() as dl:
+            p2.click('#download')
+        dl.value.save_as(f'{tmp}/embedded_out.png')
+        out = cv2.imread(f'{tmp}/embedded_out.png')
+        check('埋め込み版からも書き出せる', out is not None and out.shape[:2] == (1080, 1920))
+        p2.reload()
+        p2.wait_for_timeout(1200)
+        check('開き直しても氏名が残る', p2.input_value('#f_name') == '鈴木 一郎', p2.input_value('#f_name'))
+        check('開き直しても会社名は既定のまま', p2.input_value('#f_company') == '〇〇法律事務所')
 
         browser.close()
 
