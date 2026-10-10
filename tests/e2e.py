@@ -10,6 +10,7 @@ index.html を実際の Chromium で開き、次を確認する。
   - テンプレートに個人情報（氏名・肩書・連絡先など）が含まれないこと
   - 縦横比の違う画像を読み込んだとき、自動で「画像全体を入れる」に切り替わること
   - 既定テンプレートを埋め込んだ HTML が、開いた時点で設定済みになること
+  - 会社名を改行で複数行書けること（4行まで）
 
 必要なもの:
     pip install playwright opencv-python-headless numpy
@@ -205,6 +206,41 @@ def main():
         p2.wait_for_timeout(1200)
         check('開き直しても氏名が残る', p2.input_value('#f_name') == '鈴木 一郎', p2.input_value('#f_name'))
         check('開き直しても会社名は既定のまま', p2.input_value('#f_company') == '〇〇法律事務所')
+
+        # --- 会社名の複数行表示 ---
+        print('[会社名の複数行]')
+        page.set_input_files('#baseFile', f'{tmp}/ar_16x9.png')
+        page.wait_for_timeout(400)
+        page.click('#baseClear')
+        page.uncheck('#gradient')
+        page.evaluate("() => { const e = document.getElementById('dim'); e.value = 0; e.dispatchEvent(new Event('input')); }")
+        for f in ('f_qual', 'f_name', 'f_namesub', 'f_title', 'f_contact', 'f_catch', 'f_qr'):
+            page.fill('#' + f, '')
+        page.click('#layouts button[data-layout="A"]')
+
+        def text_height(value):
+            """単色背景の上に描かれた部分の高さを測る"""
+            page.fill('#f_company', value)
+            page.wait_for_timeout(500)
+            with page.expect_download() as d:
+                page.click('#download')
+            path = f'{tmp}/co_{abs(hash(value))}.png'
+            d.value.save_as(path)
+            im = cv2.imread(path)
+            base = np.array([0x3f, 0x26, 0x12])   # 既定の背景色 #12263f を BGR で
+            ys = np.nonzero((np.abs(im.astype(int) - base).sum(axis=2) > 18).any(axis=1))[0]
+            return (ys.max() - ys.min()) if len(ys) else 0
+
+        h1 = text_height('〇〇法律グループ')
+        h2 = text_height('〇〇法律グループ\n弁護士法人〇〇法律事務所')
+        h4 = text_height('Aグループ\nB法律事務所\nC社会保険労務士法人\nD税理士法人')
+        h6 = text_height('1\n2\n3\n4\n5\n6')
+        line = 0.030 * 1080 * 1.3            # 1行の高さ（文字サイズ 3.0% × 行送り 1.3）
+        check('2行にすると1行ぶん高くなる', abs((h2 - h1) - line) < line * 0.3, f'+{h2 - h1}px（1行={line:.0f}px）')
+        check('4行にすると3行ぶん高くなる', abs((h4 - h1) - line * 3) < line * 0.5, f'+{h4 - h1}px')
+        check('5行目以降は表示しない', h6 == h4, f'6行={h6}px / 4行={h4}px')
+        check('5行以上入れると注意書きが出る', '先頭4行' in page.text_content('#companyHint'),
+              page.text_content('#companyHint'))
 
         browser.close()
 

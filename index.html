@@ -157,7 +157,9 @@
 
     <div class="card">
       <h2>3. 文字の内容</h2>
-      <label for="f_company">会社名・事務所名</label><input type="text" id="f_company" placeholder="〇〇法律事務所">
+      <label for="f_company">会社名・事務所名（改行で最大4行）</label>
+      <textarea id="f_company" rows="2" placeholder="〇〇法律グループ&#10;弁護士法人〇〇法律事務所"></textarea>
+      <p class="hint" id="companyHint" hidden></p>
       <label for="f_qual">資格名・士業表記</label><input type="text" id="f_qual" placeholder="弁護士">
       <label for="f_name">氏名</label><input type="text" id="f_name" placeholder="山田 太郎">
       <label for="f_namesub">ふりがな・英字表記</label><input type="text" id="f_namesub" placeholder="TARO YAMADA">
@@ -683,7 +685,13 @@ const QR = (() => {
   const rule = (gap) => ({ t:'rule', size: 0.0035, gap: gap == null ? 0.020 : gap });
   const logo = (gap) => ({ t:'logo', size: null, gap: gap == null ? 0.022 : gap });
   const qr   = () => ({ t:'qr', size: null, gap: 0 });
-  const wrap = (size, maxW, gap) => ({ t:'wrap', key:'catch', size, maxW, gap: gap == null ? 0.016 : gap });
+  // 複数行の要素。改行で分け、maxW を超える行は自動で折り返す
+  const lines = (key, size, maxW, opt) => Object.assign(
+    { t:'wrap', key, size, maxW, weight: 400, lh: 1.45, maxLines: 0, gap: 0.014 }, opt || {});
+  const wrap = (size, maxW, gap) => lines('catch', size, maxW, { gap: gap == null ? 0.016 : gap });
+  // 会社名・事務所名（グループ名と所属法人の併記などで最大4行）
+  const company = (size, maxW, gap) => lines('company', size, maxW,
+    { weight: 600, lh: 1.3, maxLines: 4, gap });
 
   const ACC = 'accent'; // 色指定のキーワード
 
@@ -693,7 +701,7 @@ const QR = (() => {
       case 'A': return {
         blocks: [
           { id:'main', x:R, y:0.90, align:'right', dir:'up', panel:true, items:[
-            logo(), txt('company',0.030,600), rule(),
+            logo(), company(0.030, 0.40), rule(),
             txt('qual',0.024,400,ACC,0.008), txt('name',0.062,700,null,0.008),
             txt('namesub',0.020,400,null,0.016), txt('title',0.024,400),
             txt('contact',0.020,400),
@@ -704,7 +712,7 @@ const QR = (() => {
       case 'B': return {
         blocks: [
           { id:'main', x:L, y:0.09, align:'left', dir:'down', panel:true, items:[
-            logo(), txt('company',0.032,600), rule(0),
+            logo(), company(0.032, 0.40), rule(0),
           ]},
           { id:'sub', x:R, y:0.90, align:'right', dir:'up', panel:true, items:[
             txt('qual',0.024,400,ACC,0.008), txt('name',0.060,700,null,0.008),
@@ -717,7 +725,7 @@ const QR = (() => {
         band: { x0: R - 0.30, x1: 1.0 },
         blocks: [
           { id:'main', x:R, y:0.50, align:'right', dir:'center', panel:false, items:[
-            logo(), txt('company',0.028,600), rule(),
+            logo(), company(0.028, 0.26), rule(),
             txt('qual',0.022,400,ACC,0.008), txt('name',0.054,700,null,0.008),
             txt('namesub',0.019,400,null,0.018), txt('title',0.022,400),
             wrap(0.024, 0.26, 0.020), txt('contact',0.019,400,null,0.020), qr(),
@@ -727,7 +735,7 @@ const QR = (() => {
         bar: { y0: 0, y1: 0.17 },
         blocks: [
           { id:'main', x:L, y:0.085, align:'left', dir:'center', panel:false, items:[
-            logo(), txt('company',0.030,600),
+            logo(), company(0.030, 0.34),
           ]},
           { id:'sub', x:R, y:0.085, align:'right', dir:'center', panel:false, items:[
             txt('qual',0.020,400,ACC,0.006), txt('name',0.040,700,null,0.006), txt('title',0.020,400),
@@ -800,12 +808,14 @@ const QR = (() => {
         const v = (S.text[it.key] || '').trim();
         if (!v) continue;
         const fs = it.size * H * scale;
-        ctx.font = `400 ${fs}px ${fam}`;
-        const lines = wrapLines(ctx, v, it.maxW * W);
-        if (!lines.length) continue;
-        const w = Math.max(...lines.map(l => ctx.measureText(l).width));
-        const h = lines.length * fs * 1.45;
-        parts.push({ it, kind:'wrap', lines, fs, w, h, gap });
+        const weight = it.weight || 400, lh = it.lh || 1.45;
+        ctx.font = `${weight} ${fs}px ${fam}`;
+        let ls = wrapLines(ctx, v, it.maxW * W);
+        if (it.maxLines) ls = ls.slice(0, it.maxLines);
+        if (!ls.length) continue;
+        const w = Math.max(...ls.map(l => ctx.measureText(l).width));
+        const h = ls.length * fs * lh;
+        parts.push({ it, kind:'wrap', lines: ls, fs, w, h, gap, weight, lh });
         maxW = Math.max(maxW, w); total += h + gap;
       } else if (it.t === 'logo') {
         if (!S.logoImg) continue;
@@ -944,9 +954,10 @@ const QR = (() => {
         ctx.fillStyle = color;
         ctx.fillText(p.value, tx, y + p.fs * 0.09);
       } else if (p.kind === 'wrap') {
-        ctx.font = `400 ${p.fs}px ${fam}`;
+        ctx.font = `${p.weight} ${p.fs}px ${fam}`;
         ctx.fillStyle = color;
-        p.lines.forEach((ln, i) => ctx.fillText(ln, tx, y + i * p.fs * 1.45 + p.fs * 0.16));
+        const inset = p.fs * (p.lh - 1) * 0.5;   // 行送りの余白を上下に振り分ける
+        p.lines.forEach((ln, i) => ctx.fillText(ln, tx, y + i * p.fs * p.lh + inset));
       } else if (p.kind === 'logo') {
         ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
         const lx = block.align === 'right' ? tx - p.w : block.align === 'center' ? tx - p.w / 2 : tx;
@@ -1219,7 +1230,17 @@ const QR = (() => {
   const TEXT_FIELDS = { f_company:'company', f_qual:'qual', f_name:'name', f_namesub:'namesub',
                         f_title:'title', f_contact:'contact', f_catch:'catch', f_qr:'qr' };
   for (const [id, key] of Object.entries(TEXT_FIELDS)) {
-    $(id).addEventListener('input', (e) => { S.text[key] = e.target.value; render(); });
+    $(id).addEventListener('input', (e) => {
+      S.text[key] = e.target.value;
+      if (key === 'company') updateCompanyHint();
+      render();
+    });
+  }
+  function updateCompanyHint() {
+    const n = (S.text.company || '').split(/\r?\n/).filter(l => l.trim()).length;
+    const el = $('companyHint');
+    el.hidden = n <= 4;
+    el.textContent = n > 4 ? `${n}行入力されています。表示されるのは先頭4行までです。` : '';
   }
   for (const [id, key] of [['fit','fit'],['font','font'],['qrEc','qrEc'],['sizeSel','size'],['fmtSel','fmt']]) {
     $(id).addEventListener('change', (e) => {
@@ -1428,6 +1449,7 @@ const QR = (() => {
 
   function syncFormFromState() {
     for (const [id, key] of Object.entries(TEXT_FIELDS)) $(id).value = S.text[key] || '';
+    updateCompanyHint();
     $('fit').value = S.fit; $('font').value = S.font; $('qrEc').value = S.qrEc;
     $('sizeSel').value = S.size; $('fmtSel').value = S.fmt;
     $('bgColor').value = S.bgColor; $('textColor').value = S.textColor; $('accentColor').value = S.accentColor;
