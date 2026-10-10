@@ -24,13 +24,14 @@ index.html を実際の Chromium で開き、次を確認する。
 実行:
     python3 tests/e2e.py
 """
-import os, sys, json, tempfile
+import os, re, sys, json, tempfile
 import numpy as np
 import cv2
 from playwright.sync_api import sync_playwright
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PAGE = os.path.join(ROOT, 'index.html')
+SRC = os.path.join(ROOT, 'index.html')
+EMBED_RE = r'(<script type="application/json" id="embedded-template">)(.*?)(</script>)'
 CHROME = os.environ.get('CHROME')  # 例: /opt/pw-browsers/chromium-1194/chrome-linux/chrome
 
 failures = []
@@ -38,6 +39,24 @@ def check(name, ok, detail=''):
     print(('  OK  ' if ok else '  NG  ') + name + (f' — {detail}' if detail and not ok else ''))
     if not ok:
         failures.append(name)
+
+def plain_copy(tmp):
+    """既定テンプレートを外したコピーを作る。
+    配布用の index.html には会社の既定テンプレートが埋め込まれていることがあり、
+    そのままだと「氏名の差し替えのみ」モードで開いて設定欄が隠れ、画像も最初から
+    入っている。テストは工場出荷状態から始めたいので、埋め込みだけ空にする。"""
+    html = open(SRC, encoding='utf-8').read()
+    clean = re.sub(EMBED_RE, lambda m: m.group(1) + 'null' + m.group(3), html, flags=re.S)
+    path = os.path.join(tmp, 'index_plain.html')
+    open(path, 'w', encoding='utf-8').write(clean)
+    return path
+
+
+def embedded_default():
+    """配布用 index.html に埋め込まれている既定テンプレート（無ければ None）"""
+    raw = re.search(EMBED_RE, open(SRC, encoding='utf-8').read(), re.S).group(2).strip()
+    return None if raw == 'null' else json.loads(raw)
+
 
 def make_assets(tmp):
     """検証用のベース画像とロゴを生成する"""
@@ -74,6 +93,7 @@ QR_URL = 'https://example.com/contact?from=meet'
 def main():
     tmp = tempfile.mkdtemp(prefix='bg-e2e-')
     make_assets(tmp)
+    PAGE = plain_copy(tmp)
     errors = []
 
     with sync_playwright() as p:
@@ -90,6 +110,7 @@ def main():
 
         def set_color(cid, val):
             page.evaluate(f"() => {{ const e = document.getElementById('{cid}'); e.value = '{val}'; e.dispatchEvent(new Event('input')); }}")
+
 
         page.set_input_files('#baseFile', f'{tmp}/base.png')
         page.set_input_files('#logoFile', f'{tmp}/logo.png')
@@ -433,6 +454,28 @@ def main():
         check('5行目以降は表示しない', h6 == h4, f'6行={h6}px / 4行={h4}px')
         check('5行以上入れると注意書きが出る', '先頭4行' in page.text_content('#companyHint'),
               page.text_content('#companyHint'))
+
+        # --- 配布用 index.html に埋め込まれた既定テンプレート ---
+        tpl = embedded_default()
+        if tpl is None:
+            print('[配布用の既定テンプレート] 埋め込みなし（確認を省略）')
+        else:
+            print('[配布用の既定テンプレート]')
+            p3 = browser.new_context(viewport={'width': 1500, 'height': 1200}).new_page()
+            p3.on('console', lambda m: errors.append(f'default console.{m.type}: {m.text}') if m.type == 'error' else None)
+            p3.on('pageerror', lambda e: errors.append(f'default pageerror: {e}'))
+            p3.goto('file://' + SRC)
+            p3.wait_for_timeout(1500)
+            check('埋め込まれた会社名で開く',
+                  p3.input_value('#f_company') == tpl['text'].get('company', ''),
+                  repr(p3.input_value('#f_company')[:40]))
+            check('個人情報は埋め込まれていない',
+                  not any(tpl['text'].get(k) for k in ('name', 'namesub', 'title', 'qual', 'contact', 'qr')))
+            with p3.expect_download() as d:
+                p3.click('#download')
+            d.value.save_as(f'{tmp}/default.png')
+            im = cv2.imread(f'{tmp}/default.png')
+            check('そのまま背景を書き出せる', im is not None and im.shape[:2] == (1080, 1920))
 
         browser.close()
 
