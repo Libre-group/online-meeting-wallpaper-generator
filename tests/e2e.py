@@ -13,6 +13,9 @@ index.html を実際の Chromium で開き、次を確認する。
   - 会社名を改行で複数行書けること（4行まで）
   - 埋め込みHTMLに背景画像が入り、2回目以降に開いても残ること
   - マスコット画像を四隅に置け、左右反転でき、埋め込みにも引き継がれること
+  - 各ブロックを9か所に置け、下端まで下げてもはみ出さないこと
+  - 重ねる色・パネル色・配色プリセットが効くこと
+  - 選択中ブロックの点線が、プレビューには出て書き出した画像には入らないこと
 
 必要なもの:
     pip install playwright opencv-python-headless numpy
@@ -81,6 +84,12 @@ def main():
         page.on('pageerror', lambda e: errors.append(f'pageerror: {e}'))
         page.goto('file://' + PAGE)
         page.wait_for_timeout(600)
+
+        def set_range(rid, val):
+            page.evaluate(f"() => {{ const e = document.getElementById('{rid}'); e.value = {val}; e.dispatchEvent(new Event('input')); }}")
+
+        def set_color(cid, val):
+            page.evaluate(f"() => {{ const e = document.getElementById('{cid}'); e.value = '{val}'; e.dispatchEvent(new Event('input')); }}")
 
         page.set_input_files('#baseFile', f'{tmp}/base.png')
         page.set_input_files('#logoFile', f'{tmp}/logo.png')
@@ -281,14 +290,114 @@ def main():
               f'反転前に赤が左={red_left_before} / 反転後={red_left_after}')
         page.uncheck('#mascotFlip')
 
-        page.evaluate("() => { const e = document.getElementById('mascotSize'); e.value = 50; e.dispatchEvent(new Event('input')); }")
+        set_range('mascotSize', 50)
         page.wait_for_timeout(400)
         _, _, y0, y1, _ = mascot_box()
         # 画像の塗りは上下半分（400pxのうち y=100..300）なので、指定高さの半分が見える
         check('大きさの指定が効く', abs((y1 - y0) - 0.50 * 1080 * 0.5) < 20, f'{y1 - y0}px')
-        page.evaluate("() => { const e = document.getElementById('mascotSize'); e.value = 28; e.dispatchEvent(new Event('input')); }")
+        set_range('mascotSize', 28)
         page.click('#mascotClear')
         page.wait_for_timeout(400)
+
+        # --- 置き場所と配色 ---
+        print('[置き場所]')
+        page.click('#layouts button[data-layout="A"]')
+        page.click('#baseClear')
+        page.click('#logoClear')     # キャッチコピーだけが描かれる状態にして位置を測る
+        page.uncheck('#gradient')
+        set_range('dim', 0)
+        for f in ('f_company', 'f_qual', 'f_name', 'f_namesub', 'f_title', 'f_contact', 'f_qr'):
+            page.fill('#' + f, '')
+        page.fill('#f_catch', 'ここが一番下に来ます')
+        page.select_option('#blockSel', 'catch')
+        page.wait_for_timeout(600)
+
+        BG = np.array([0x3f, 0x26, 0x12])      # 既定の背景色 #12263f（BGR）
+
+        def drawn_box(tag):
+            with page.expect_download() as d:
+                page.click('#download')
+            path = f'{tmp}/place_{tag}.png'
+            d.value.save_as(path)
+            im = cv2.imread(path)
+            m = (np.abs(im.astype(int) - BG).sum(axis=2) > 40)
+            ys = np.nonzero(m.any(axis=1))[0]
+            xs = np.nonzero(m.any(axis=0))[0]
+            return int(xs.min()), int(xs.max()), int(ys.min()), int(ys.max())
+
+        _, _, _, y1 = drawn_box('default')
+        check('キャッチコピーの既定は画面上部', y1 < 400, f'下端 y={y1}')
+        page.click('#placeGrid button[data-place="bc"]')
+        page.wait_for_timeout(600)
+        _, _, _, y1 = drawn_box('bottom')
+        check('「下」を選ぶと下端近くまで下がる', y1 > 1000, f'下端 y={y1}')
+        check('下げても画像からはみ出さない', y1 <= 1079, f'下端 y={y1}')
+        page.click('#placeGrid button[data-place="br"]')
+        page.wait_for_timeout(600)
+        x0, _, _, _ = drawn_box('bottomright')
+        check('「右下」を選ぶと右に寄る', x0 > 900, f'左端 x={x0}')
+        page.click('#placeDefault')
+        page.wait_for_timeout(600)
+        _, _, _, y1 = drawn_box('reverted')
+        check('「レイアウトの既定位置に戻す」で元に戻る', y1 < 400, f'下端 y={y1}')
+
+        print('[配色]')
+        page.set_input_files('#baseFile', f'{tmp}/green.png')
+        page.wait_for_timeout(800)
+        set_color('overlayColor', '#ff0000')
+        set_range('dim', 70)
+        page.wait_for_timeout(700)
+        with page.expect_download() as d:
+            page.click('#download')
+        d.value.save_as(f'{tmp}/overlay.png')
+        px = cv2.imread(f'{tmp}/overlay.png')[40, 40]
+        check('背景画像の上に好きな色を重ねられる', px[2] > 150 and px[1] < 80,
+              f'左上 BGR={tuple(int(v) for v in px)}')
+        set_range('dim', 0)
+        page.fill('#f_name', '山田 太郎')
+        set_color('panelColor', '#ff00ff')
+        set_range('panelOpacity', 100)
+        page.wait_for_timeout(800)
+        with page.expect_download() as d:
+            page.click('#download')
+        d.value.save_as(f'{tmp}/panel.png')
+        mag = cv2.inRange(cv2.imread(f'{tmp}/panel.png'),
+                          np.array([200, 0, 200]), np.array([255, 60, 255]))
+        check('パネル・帯の色を変えられる', int(mag.sum()) > 0)
+        page.click('#themes button[data-theme="light"]')
+        page.wait_for_timeout(600)
+        check('ライトのプリセットが効く',
+              page.input_value('#textColor').lower() == '#16202b'
+              and page.input_value('#panelColor').lower() == '#ffffff',
+              f"{page.input_value('#textColor')} / {page.input_value('#panelColor')}")
+        page.click('#themes button[data-theme="brand"]')
+        page.wait_for_timeout(600)
+        check('ブランド色のプリセットでアクセント色が重なる',
+              page.input_value('#overlayColor').lower() == page.input_value('#accentColor').lower())
+        page.click('#themes button[data-theme="dark"]')
+        page.wait_for_timeout(600)
+
+        print('[選択中ブロックの表示]')
+        page.select_option('#blockSel', 'main')
+        page.wait_for_timeout(600)
+        with page.expect_download() as d:
+            page.click('#download')
+        d.value.save_as(f'{tmp}/nohl.png')
+        hl = cv2.inRange(cv2.imread(f'{tmp}/nohl.png'),
+                         np.array([230, 140, 50]), np.array([255, 190, 110]))  # #4da3ff を BGR で
+        check('書き出した画像に点線は入らない', int(hl.sum()) == 0)
+        n = page.evaluate("""() => {
+            const c = document.getElementById('preview');
+            const x = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+            let n = 0;
+            for (let i = 0; i < x.length; i += 4) {
+              if (Math.abs(x[i] - 0x4d) < 30 && Math.abs(x[i+1] - 0xa3) < 30 && Math.abs(x[i+2] - 0xff) < 30) n++;
+            }
+            return n;
+        }""")
+        check('プレビューには点線が出る', n > 200, f'該当画素 {n}')
+        page.click('#baseClear')
+        page.wait_for_timeout(300)
 
         # --- 会社名の複数行表示 ---
         print('[会社名の複数行]')
@@ -296,7 +405,7 @@ def main():
         page.wait_for_timeout(400)
         page.click('#baseClear')
         page.uncheck('#gradient')
-        page.evaluate("() => { const e = document.getElementById('dim'); e.value = 0; e.dispatchEvent(new Event('input')); }")
+        set_range('dim', 0)
         for f in ('f_qual', 'f_name', 'f_namesub', 'f_title', 'f_contact', 'f_catch', 'f_qr'):
             page.fill('#' + f, '')
         page.click('#layouts button[data-layout="A"]')

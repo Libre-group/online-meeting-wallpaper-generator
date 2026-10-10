@@ -50,6 +50,10 @@
   .segmented button:first-child{border-radius:6px 0 0 6px}
   .segmented button:last-child{border-radius:0 6px 6px 0;border-left:0}
   .segmented button[aria-pressed=true]{background:var(--accent-weak);border-color:var(--accent);color:var(--accent);font-weight:700}
+  .place3{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;max-width:168px}
+  .place3 button{padding:6px 0;font-size:10.5px;line-height:1.2;white-space:nowrap}
+  .place3 button[aria-pressed=true]{background:var(--accent-weak);border-color:var(--accent);color:var(--accent);font-weight:700}
+  .themes button[aria-pressed=true]{background:var(--accent-weak);border-color:var(--accent);color:var(--accent);font-weight:700}
   .checks{display:flex;flex-wrap:wrap;gap:10px;font-size:12px}
   .checks label{display:inline-flex;align-items:center;gap:4px;margin:0;color:var(--text)}
   .checks input{margin:0}
@@ -140,11 +144,15 @@
         <div><label for="offY">上下位置 <span class="val" id="offYV"></span></label><input type="range" id="offY" min="-50" max="50" value="0"></div>
       </div>
       <div class="grid2">
-        <div><label for="dim">暗くする <span class="val" id="dimV"></span></label><input type="range" id="dim" min="0" max="70" value="18"></div>
+        <div>
+          <label for="dim">色を重ねる <span class="val" id="dimV"></span></label>
+          <div class="row tight"><input type="color" id="overlayColor" value="#000000" aria-label="重ねる色">
+            <input type="range" id="dim" min="0" max="70" value="18" style="flex:1"></div>
+        </div>
         <div><label for="blur">ぼかし <span class="val" id="blurV"></span></label><input type="range" id="blur" min="0" max="20" value="0"></div>
       </div>
       <label><input type="checkbox" id="fillBlur" checked> 余白を画像のぼかしで埋める</label>
-      <p class="hint">写真をそのまま使うと文字が読みにくくなります。「暗くする」は可読性のための機能です。</p>
+      <p class="hint">写真をそのまま使うと文字が読みにくくなります。「色を重ねる」は可読性のための機能です。黒以外の色を選べば、写真全体をブランドカラーで染めることもできます。</p>
     </div>
 
     <div class="card tplonly">
@@ -160,7 +168,7 @@
       <div class="row tight" style="margin-top:6px"><button class="sm" id="mascotClear">マスコットを外す</button></div>
       <label for="mascotSize">マスコットの大きさ <span class="val" id="mascotSizeV"></span></label>
       <input type="range" id="mascotSize" min="5" max="60" value="28">
-      <label>置き場所</label>
+      <label>置き場所（9か所から選びたいときは「6. 微調整」へ）</label>
       <div class="segmented" id="mascotPos">
         <button data-pos="bl" aria-pressed="true">左下</button>
         <button data-pos="br" aria-pressed="false">右下</button>
@@ -229,12 +237,22 @@
         <option value="mincho">明朝体</option>
         <option value="rounded">丸ゴシック</option>
       </select>
+      <label>配色プリセット</label>
+      <div class="row themes" id="themes">
+        <button data-theme="dark" aria-pressed="true">ダーク</button>
+        <button data-theme="light" aria-pressed="false">ライト</button>
+        <button data-theme="brand" aria-pressed="false">ブランド色</button>
+      </div>
       <div class="grid2">
         <div><label for="textColor">文字色</label><input type="color" id="textColor" value="#ffffff"></div>
         <div><label for="accentColor">アクセント色</label><input type="color" id="accentColor" value="#c9a227"></div>
       </div>
+      <label for="panelColor">パネル・帯の色（レイアウトCの帯、Dのバーにも使います）</label>
+      <div class="row tight"><input type="color" id="panelColor" value="#101820">
+        <input type="range" id="panelOpacity" min="0" max="100" value="50" style="flex:1">
+        <span class="val" id="panelOpacityV"></span></div>
       <div class="checks" style="margin-top:10px">
-        <label><input type="checkbox" id="panelOn" checked> 文字の下に半透明パネルを敷く</label>
+        <label><input type="checkbox" id="panelOn" checked> 文字の下にパネルを敷く</label>
         <label><input type="checkbox" id="shadowOn" checked> 文字に影を付ける</label>
       </div>
     </div>
@@ -249,17 +267,26 @@
         <option value="qr">QRコード</option>
         <option value="mascot">マスコット画像</option>
       </select>
-      <div class="grid2">
-        <div><label for="adjX">左右位置 <span class="val" id="adjXV"></span></label><input type="range" id="adjX" min="-40" max="40" value="0"></div>
-        <div><label for="adjY">上下位置 <span class="val" id="adjYV"></span></label><input type="range" id="adjY" min="-40" max="40" value="0"></div>
+      <label>置き場所</label>
+      <div class="place3" id="placeGrid">
+        <button data-place="tl">左上</button><button data-place="tc">上</button><button data-place="tr">右上</button>
+        <button data-place="ml">左</button><button data-place="mc">中央</button><button data-place="mr">右</button>
+        <button data-place="bl">左下</button><button data-place="bc">下</button><button data-place="br">右下</button>
       </div>
-      <label for="adjScale">文字の大きさ <span class="val" id="adjScaleV"></span></label>
+      <div class="row tight" style="margin-top:6px">
+        <button class="sm" id="placeDefault">レイアウトの既定位置に戻す</button>
+      </div>
+      <div class="grid2">
+        <div><label for="adjX">左右の微調整 <span class="val" id="adjXV"></span></label><input type="range" id="adjX" min="-100" max="100" value="0"></div>
+        <div><label for="adjY">上下の微調整 <span class="val" id="adjYV"></span></label><input type="range" id="adjY" min="-100" max="100" value="0"></div>
+      </div>
+      <label for="adjScale">大きさ <span class="val" id="adjScaleV"></span></label>
       <input type="range" id="adjScale" min="50" max="200" value="100">
       <div class="row tight" style="margin-top:8px">
         <button class="sm" id="adjReset">このブロックを初期値に戻す</button>
         <button class="sm" id="adjResetAll">すべて初期値に戻す</button>
       </div>
-      <p class="hint">プレビュー上で文字やロゴを直接ドラッグしても動かせます。</p>
+      <p class="hint">置き場所を選ぶと基準点ごと移動します（「下」なら下端から上に積み上がるので、はみ出しません）。プレビュー上で直接ドラッグしても動かせます。選択中のブロックはプレビューに青い点線で表示されます。</p>
     </div>
   </div>
 
@@ -679,11 +706,15 @@ const QR = (() => {
     baseSrc: null, baseImg: null, logoSrc: null, logoImg: null,
     fit: 'cover', zoom: 100, offX: 0, offY: 0, dim: 18, blur: 0, fillBlur: true,
     bgColor: '#12263f', gradient: true, logoSize: 8,
-    mascotSrc: null, mascotImg: null, mascotSize: 28, mascotPos: 'bl', mascotFlip: false,
+    mascotSrc: null, mascotImg: null, mascotSize: 28, mascotFlip: false,
+    overlayColor: '#000000',
+    panelColor: '#101820', panelOpacity: 50,
+    // 置き場所の上書き（null = レイアウトの既定位置）。'tl'〜'br' の9か所
+    place: { main: null, sub: null, catch: null, qr: null, mascot: null },
     text: { company: '', qual: '', name: '', namesub: '', title: '', contact: '', catch: '', qr: '' },
     qrEc: 'M', qrSize: 13,
     layout: 'A', marginMode: 'safe',
-    font: 'gothic', textColor: '#ffffff', accentColor: '#c9a227',
+    font: 'gothic', textColor: '#ffffff', accentColor: '#c9a227', theme: 'dark',
     panelOn: true, shadowOn: true,
     adj: { main: { x:0,y:0,s:100 }, sub: { x:0,y:0,s:100 }, catch: { x:0,y:0,s:100 },
            qr: { x:0,y:0,s:100 }, mascot: { x:0,y:0,s:100 } },
@@ -707,14 +738,23 @@ const QR = (() => {
   const logo = (gap) => ({ t:'logo', size: null, gap: gap == null ? 0.022 : gap });
   const qr   = () => ({ t:'qr', size: null, gap: 0 });
   const mascotItem = () => ({ t:'mascot', size: null, gap: 0 });
-  // マスコットは文字の並びとは独立した1枚絵として、四隅のいずれかに置く
-  const mascotBlock = (m) => {
-    const pos = S.mascotPos || 'bl';
-    const bottom = pos[0] === 'b', left = pos[1] === 'l';
-    return { id:'mascot', x: left ? m : 1 - m, y: bottom ? 0.97 : 0.05,
-             align: left ? 'left' : 'right', dir: bottom ? 'up' : 'down',
-             panel: false, items: [ mascotItem() ] };
+  // マスコットは文字の並びとは独立した1枚絵。既定は左下
+  const mascotBlock = (m) => ({ id:'mascot', x: m, y: 0.94, align:'left', dir:'up',
+                                panel: false, items: [ mascotItem() ] });
+
+  /* 置き場所の上書き。行（上/中/下）で基準点と伸びる向きが、列（左/中/右）で
+     横の基準が決まる。「下」を選ぶと下端から上に積み上がるのではみ出さない。 */
+  const PLACE_ROW = { t: { y: 0.06, dir: 'down' }, m: { y: 0.50, dir: 'center' }, b: { y: 0.94, dir: 'up' } };
+  const PLACE_COL = {
+    l: (m) => ({ x: m,       align: 'left'   }),
+    c: () =>  ({ x: 0.5,     align: 'center' }),
+    r: (m) => ({ x: 1 - m,   align: 'right'  }),
   };
+  function placeBlock(block, m) {
+    const code = S.place[block.id];
+    if (!code || !PLACE_ROW[code[0]] || !PLACE_COL[code[1]]) return block;
+    return Object.assign({}, block, PLACE_ROW[code[0]], PLACE_COL[code[1]](m));
+  }
   // 複数行の要素。改行で分け、maxW を超える行は自動で折り返す
   const lines = (key, size, maxW, opt) => Object.assign(
     { t:'wrap', key, size, maxW, weight: 400, lh: 1.45, maxLines: 0, gap: 0.014 }, opt || {});
@@ -727,7 +767,7 @@ const QR = (() => {
 
   function layoutDef(id, m) {
     const def = baseLayoutDef(id, m);
-    def.blocks = def.blocks.concat([ mascotBlock(m) ]);
+    def.blocks = def.blocks.concat([ mascotBlock(m) ]).map((b) => placeBlock(b, m));
     return def;
   }
 
@@ -922,7 +962,7 @@ const QR = (() => {
       ctx.fillStyle = S.bgColor; ctx.fillRect(0, 0, W, H);
     }
     if (S.dim > 0) {
-      ctx.fillStyle = `rgba(0,0,0,${S.dim / 100})`;
+      ctx.fillStyle = rgba(S.overlayColor, S.dim / 100);
       ctx.fillRect(0, 0, W, H);
     }
   }
@@ -935,6 +975,12 @@ const QR = (() => {
   function rgba(hex, a) {
     const n = parseInt(hex.slice(1), 16);
     return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+  }
+
+  // 明るい色かどうか（影の色を決めるのに使う）
+  function isLight(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    return (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) > 150;
   }
 
   function roundRect(ctx, x, y, w, h, r) {
@@ -968,11 +1014,15 @@ const QR = (() => {
     const ax = (block.x + adj.x / 100) * W;
     const ay = (block.y + adj.y / 100) * H;
     let y = block.dir === 'up' ? ay - mm.h : block.dir === 'center' ? ay - mm.h / 2 : ay;
-    const left = block.align === 'right' ? ax - mm.w : block.align === 'center' ? ax - mm.w / 2 : ax;
+    let left = block.align === 'right' ? ax - mm.w : block.align === 'center' ? ax - mm.w / 2 : ax;
+    // 動かしすぎても画面外に消えないよう、最低2割は残す
+    const keep = 0.2;
+    left = Math.max(-mm.w * (1 - keep), Math.min(W - mm.w * keep, left));
+    y = Math.max(-mm.h * (1 - keep), Math.min(H - mm.h * keep, y));
 
-    if (block.panel && S.panelOn) {
+    if (block.panel && S.panelOn && S.panelOpacity > 0) {
       const p = H * 0.028;
-      ctx.fillStyle = 'rgba(0,0,0,0.38)';
+      ctx.fillStyle = rgba(S.panelColor, S.panelOpacity / 100);
       roundRect(ctx, left - p, y - p, mm.w + p * 2, mm.h + p * 2, H * 0.014);
       ctx.fill();
     }
@@ -987,7 +1037,8 @@ const QR = (() => {
     for (const p of mm.parts) {
       const color = p.it.color === ACC ? S.accentColor : (p.it.color || S.textColor);
       if (S.shadowOn && (p.kind === 'text' || p.kind === 'wrap')) {
-        ctx.shadowColor = 'rgba(0,0,0,0.55)';
+        // 明るい文字には暗い影、暗い文字には明るい影をつける
+        ctx.shadowColor = isLight(S.textColor) ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.6)';
         ctx.shadowBlur = H * 0.006; ctx.shadowOffsetY = H * 0.002;
       } else { ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0; }
 
@@ -1035,11 +1086,14 @@ const QR = (() => {
     const def = layoutDef(S.layout, MARGIN[S.marginMode]);
     if (def.band) {
       const g = ctx.createLinearGradient(def.band.x0 * W, 0, def.band.x1 * W, 0);
-      g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(0.30, 'rgba(0,0,0,0.52)'); g.addColorStop(1, 'rgba(0,0,0,0.62)');
+      const a = S.panelOpacity / 100;
+      g.addColorStop(0, rgba(S.panelColor, 0));
+      g.addColorStop(0.30, rgba(S.panelColor, a));
+      g.addColorStop(1, rgba(S.panelColor, Math.min(0.95, a + 0.10)));
       ctx.fillStyle = g; ctx.fillRect(def.band.x0 * W, 0, (def.band.x1 - def.band.x0) * W, H);
     }
     if (def.bar) {
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillStyle = rgba(S.panelColor, Math.min(0.95, S.panelOpacity / 100 + 0.05));
       ctx.fillRect(0, def.bar.y0 * H, W, (def.bar.y1 - def.bar.y0) * H);
       ctx.fillStyle = S.accentColor;
       ctx.fillRect(0, def.bar.y1 * H, W, Math.max(1, H * 0.004));
@@ -1058,6 +1112,17 @@ const QR = (() => {
   let hitBoxes = [];
 
   function drawOverlays(ctx, W, H) {
+    // 選択中のブロックを点線で示す
+    const box = hitBoxes.find((b) => b.id === $('blockSel').value);
+    if (box) {
+      let x0 = box.x0, x1 = box.x1;
+      if (S.showMirror) { const t = 1 - x1; x1 = 1 - x0; x0 = t; }
+      const pad = H * 0.014;
+      ctx.strokeStyle = '#4da3ff'; ctx.lineWidth = 3; ctx.setLineDash([10, 7]);
+      ctx.strokeRect(x0 * W - pad, box.y0 * H - pad,
+                     (x1 - x0) * W + pad * 2, (box.y1 - box.y0) * H + pad * 2);
+      ctx.setLineDash([]);
+    }
     if (S.showSafe) {
       // 正方形タイルで切り落とされる左右
       ctx.fillStyle = 'rgba(214,69,69,0.16)';
@@ -1259,10 +1324,20 @@ const QR = (() => {
   });
   $('mascotPos').addEventListener('click', (e) => {
     const b = e.target.closest('button[data-pos]'); if (!b) return;
-    S.mascotPos = b.dataset.pos;
-    S.adj.mascot = { x:0, y:0, s: S.adj.mascot.s };   // 置き場所を変えたら微調整はいったん戻す
-    syncFormFromState(); render();
+    setPlace('mascot', b.dataset.pos);
   });
+
+  // 置き場所を変えたら、そのブロックの微調整はいったん戻す
+  function setPlace(id, code) {
+    S.place[id] = code;
+    S.adj[id] = { x: 0, y: 0, s: S.adj[id].s };
+    syncFormFromState(); render();
+  }
+  $('placeGrid').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-place]'); if (!b) return;
+    setPlace($('blockSel').value, b.dataset.place);
+  });
+  $('placeDefault').addEventListener('click', () => setPlace($('blockSel').value, null));
 
   /* ================= 入力の結び付け ================= */
   function bindRange(id, key, fmt) {
@@ -1287,6 +1362,7 @@ const QR = (() => {
   bindRange('logoSize', 'logoSize', pct);
   bindRange('mascotSize', 'mascotSize', pct);
   bindRange('qrSize', 'qrSize', pct);
+  bindRange('panelOpacity', 'panelOpacity', pct);
   bindRange('quality', 'quality', pct);
   bindRange('adjX', 'adj.x', pct);
   bindRange('adjY', 'adj.y', pct);
@@ -1314,7 +1390,8 @@ const QR = (() => {
       render();
     });
   }
-  for (const [id, key] of [['bgColor','bgColor'],['textColor','textColor'],['accentColor','accentColor']]) {
+  for (const [id, key] of [['bgColor','bgColor'],['textColor','textColor'],['accentColor','accentColor'],
+                           ['overlayColor','overlayColor'],['panelColor','panelColor']]) {
     $(id).addEventListener('input', (e) => { S[key] = e.target.value; render(); });
   }
   for (const [id, key] of [['gradient','gradient'],['panelOn','panelOn'],['shadowOn','shadowOn'],['fillBlur','fillBlur'],['mascotFlip','mascotFlip'],
@@ -1326,6 +1403,22 @@ const QR = (() => {
       render();
     });
   }
+
+  // 配色プリセット
+  const THEMES = {
+    dark:  { textColor:'#ffffff', panelColor:'#101820', panelOpacity:50, overlayColor:'#000000', dim:18 },
+    light: { textColor:'#16202b', panelColor:'#ffffff', panelOpacity:78, overlayColor:'#ffffff', dim:30 },
+    brand: { textColor:'#ffffff', panelColor:'#000000', panelOpacity:42, overlayColor:null,      dim:32 },
+  };
+  $('themes').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-theme]'); if (!b) return;
+    const t = THEMES[b.dataset.theme]; if (!t) return;
+    S.theme = b.dataset.theme;
+    for (const [k, v] of Object.entries(t)) if (v !== null) S[k] = v;
+    // 「ブランド色」はアクセント色をそのまま全体に重ねる
+    if (b.dataset.theme === 'brand') S.overlayColor = S.accentColor;
+    syncFormFromState(); render();
+  });
 
   // 背景色のプリセット
   const sw = $('bgSwatches');
@@ -1367,18 +1460,24 @@ const QR = (() => {
     syncAdjControls();
   }
   function syncAdjControls() {
-    const a = S.adj[$('blockSel').value];
+    const id = $('blockSel').value;
+    for (const b of $('placeGrid').querySelectorAll('button')) {
+      b.setAttribute('aria-pressed', String(b.dataset.place === S.place[id]));
+    }
+    const a = S.adj[id];
     $('adjX').value = a.x; $('adjXV').textContent = a.x + '%';
     $('adjY').value = a.y; $('adjYV').textContent = a.y + '%';
     $('adjScale').value = a.s; $('adjScaleV').textContent = a.s + '%';
   }
-  $('blockSel').addEventListener('change', syncAdjControls);
+  $('blockSel').addEventListener('change', () => { syncAdjControls(); render(); });
   $('adjReset').addEventListener('click', () => {
-    S.adj[$('blockSel').value] = { x:0, y:0, s:100 }; syncAdjControls(); render();
+    const id = $('blockSel').value;
+    S.adj[id] = { x:0, y:0, s:100 }; S.place[id] = null;
+    syncFormFromState(); render();
   });
   $('adjResetAll').addEventListener('click', () => {
-    for (const k of Object.keys(S.adj)) S.adj[k] = { x:0, y:0, s:100 };
-    syncAdjControls(); render();
+    for (const k of Object.keys(S.adj)) { S.adj[k] = { x:0, y:0, s:100 }; S.place[k] = null; }
+    syncFormFromState(); render();
   });
 
   /* ================= プレビュー上のドラッグ ================= */
@@ -1402,7 +1501,7 @@ const QR = (() => {
     let nx = (e.clientX - r.left) / r.width;
     const ny = (e.clientY - r.top) / r.height;
     if (S.showMirror) nx = 1 - nx;
-    const clamp = (v) => Math.max(-40, Math.min(40, v));
+    const clamp = (v) => Math.max(-100, Math.min(100, v));
     S.adj[drag.id].x = clamp(Math.round(drag.ox + (nx - drag.nx) * 100));
     S.adj[drag.id].y = clamp(Math.round(drag.oy + (ny - drag.ny) * 100));
     syncAdjControls(); render();
@@ -1435,7 +1534,8 @@ const QR = (() => {
       _format: 'meeting-bg-template', _version: 1,
       fit:S.fit, zoom:S.zoom, offX:S.offX, offY:S.offY, dim:S.dim, blur:S.blur, fillBlur:S.fillBlur,
       bgColor:S.bgColor, gradient:S.gradient, logoSize:S.logoSize,
-      mascotSize:S.mascotSize, mascotPos:S.mascotPos, mascotFlip:S.mascotFlip,
+      mascotSize:S.mascotSize, mascotFlip:S.mascotFlip, place:S.place,
+      overlayColor:S.overlayColor, panelColor:S.panelColor, panelOpacity:S.panelOpacity, theme:S.theme,
       qrEc:S.qrEc, qrSize:S.qrSize, layout:S.layout, marginMode:S.marginMode,
       font:S.font, textColor:S.textColor, accentColor:S.accentColor,
       panelOn:S.panelOn, shadowOn:S.shadowOn, adj:S.adj, size:S.size, fmt:S.fmt, quality:S.quality,
@@ -1513,10 +1613,13 @@ const QR = (() => {
 
   function applyState(d, keepPersonal) {
     const keys = ['fit','zoom','offX','offY','dim','blur','fillBlur','bgColor','gradient','logoSize',
-                  'mascotSize','mascotPos','mascotFlip','qrEc','qrSize',
+                  'mascotSize','mascotFlip','overlayColor','panelColor','panelOpacity','theme','qrEc','qrSize',
                   'layout','marginMode','font','textColor','accentColor','panelOn','shadowOn','size','fmt','quality'];
     for (const k of keys) if (d[k] !== undefined) S[k] = d[k];
     if (d.adj) for (const k of Object.keys(S.adj)) if (d.adj[k]) S.adj[k] = Object.assign({ x:0,y:0,s:100 }, d.adj[k]);
+    if (d.place) for (const k of Object.keys(S.place)) if (d.place[k] !== undefined) S.place[k] = d.place[k];
+    // v1.3 以前のテンプレートはマスコットの置き場所を mascotPos で持っていた
+    if (d.mascotPos && !(d.place && d.place.mascot)) S.place.mascot = d.mascotPos;
     if (d.text) for (const [k, v] of Object.entries(d.text)) {
       if (keepPersonal && PERSONAL.includes(k)) continue;
       if (k in S.text) S.text[k] = v;
@@ -1543,15 +1646,20 @@ const QR = (() => {
     $('fit').value = S.fit; $('font').value = S.font; $('qrEc').value = S.qrEc;
     $('sizeSel').value = S.size; $('fmtSel').value = S.fmt;
     $('bgColor').value = S.bgColor; $('textColor').value = S.textColor; $('accentColor').value = S.accentColor;
+    $('overlayColor').value = S.overlayColor; $('panelColor').value = S.panelColor;
+    for (const b of $('themes').querySelectorAll('button')) {
+      b.setAttribute('aria-pressed', String(b.dataset.theme === S.theme));
+    }
     $('gradient').checked = S.gradient; $('panelOn').checked = S.panelOn; $('shadowOn').checked = S.shadowOn;
     $('fillBlur').checked = S.fillBlur;
     $('mascotFlip').checked = S.mascotFlip;
     for (const b of $('mascotPos').querySelectorAll('button')) {
-      b.setAttribute('aria-pressed', String(b.dataset.pos === S.mascotPos));
+      b.setAttribute('aria-pressed', String(b.dataset.pos === (S.place.mascot || 'bl')));
     }
     $('qualityRow').hidden = S.fmt !== 'jpeg';
     for (const [id, key] of [['zoom','zoom'],['offX','offX'],['offY','offY'],['dim','dim'],['blur','blur'],
-                             ['logoSize','logoSize'],['mascotSize','mascotSize'],['qrSize','qrSize'],['quality','quality']]) {
+                             ['logoSize','logoSize'],['mascotSize','mascotSize'],['qrSize','qrSize'],
+                             ['panelOpacity','panelOpacity'],['quality','quality']]) {
       const el = $(id); el.value = S[key];
       const out = $(id + 'V'); if (out) out.textContent = S[key] + (id === 'blur' && !S[key] ? '' : '%');
       if (id === 'blur' && !S[key]) out.textContent = 'なし';
@@ -1569,11 +1677,11 @@ const QR = (() => {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       try {
-        const d = { _format:'meeting-bg-template', _version:1, text:S.text, adj:S.adj,
+        const d = { _format:'meeting-bg-template', _version:1, text:S.text, adj:S.adj, place:S.place,
                     logoSrc:S.logoSrc, mascotSrc:S.mascotSrc,
                     _mode: currentMode, _embeddedStamp: S._embeddedStamp || null };
         for (const k of ['fit','zoom','offX','offY','dim','blur','fillBlur','bgColor','gradient','logoSize',
-                  'mascotSize','mascotPos','mascotFlip','qrEc','qrSize',
+                  'mascotSize','mascotFlip','overlayColor','panelColor','panelOpacity','theme','qrEc','qrSize',
                          'layout','marginMode','font','textColor','accentColor','panelOn','shadowOn','size','fmt','quality']) d[k] = S[k];
         localStorage.setItem(LS_KEY, JSON.stringify(d));   // 背景画像は容量が大きいため保存しない
       } catch { /* 容量超過・プライベートモードなどでは黙って諦める */ }
@@ -1595,6 +1703,7 @@ const QR = (() => {
   // base の上に top を重ねる。keepPersonal なら個人情報は base 側を残す
   function mergeTemplate(base, top, keepPersonal) {
     const out = Object.assign({}, base, top);
+    out.place = Object.assign({}, base.place || {}, top.place || {});
     out.text = Object.assign({}, base.text || {});
     for (const [k, v] of Object.entries(top.text || {})) {
       if (keepPersonal && PERSONAL.includes(k)) continue;
