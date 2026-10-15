@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<html lang="ja"><head>
+<html lang="ja">
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>オンライン会議 背景ジェネレーター</title>
@@ -82,7 +83,7 @@
   body.namemode .tplonly{display:none}
 </style>
 </head>
-<body class="">
+<body>
 <header>
   <h1>オンライン会議 背景ジェネレーター</h1>
   <span class="note">画像もテキストも外部に送信されません（すべてブラウザ内で処理）</span>
@@ -99,16 +100,16 @@
         </div>
       </div>
       <p class="hint" id="modeHint">会社ロゴ・色・レイアウトを含めて自由に編集できます。</p>
-      <p class="hint" id="embeddedInfo">このファイルには既定テンプレートが入っています（2026/10/10 書き出し）。</p>
+      <p class="hint" id="embeddedInfo" hidden></p>
       <div class="row" style="margin-top:8px">
         <button id="tplSave" class="tplonly">テンプレートを書き出す</button>
         <button id="tplLoad" class="tplonly">テンプレートを読み込む</button>
-        <button id="tplReset">既定テンプレートに戻す</button>
+        <button id="tplReset" hidden>既定テンプレートに戻す</button>
       </div>
       <div class="row tplonly" style="margin-top:6px">
         <button id="tplEmbed">この設定を既定にしたHTMLを書き出す</button>
       </div>
-      <input type="file" id="tplFile" accept="application/json" hidden="">
+      <input type="file" id="tplFile" accept="application/json" hidden>
       <label class="tplonly" style="margin-top:6px"><input type="checkbox" id="tplWithBase"> 背景画像をJSONテンプレートにも含める（ファイルが大きくなります）</label>
       <p class="hint tplonly">「この設定を既定にしたHTML」には、背景画像・ロゴ・マスコットが<b>常に</b>含まれます（上のチェックはJSONテンプレート用です）。書き出したHTMLで共有先のファイルを置き換えると、次からは開いた時点でこの設定が入った状態になります。氏名・肩書・連絡先などの個人情報は含まれません。</p>
     </div>
@@ -117,8 +118,8 @@
       <h2>1. ベース背景</h2>
       <label for="baseFile">背景画像（未指定なら下の背景色を使用）</label>
       <input type="file" id="baseFile" accept="image/*">
-      <div id="baseNotice" class="warn" hidden="">この画像は出力サイズ（1920×1080 / 16:9）と縦横比が違います。「全面に広げる」のままだと上下が約20%切り取られるため、「画像全体を入れる」に切り替えました。余白は同じ画像のぼかしで埋めています。切り取ってよい場合は「全面に広げる」を押してください。</div>
-      <p class="hint" id="baseInfo">読み込んだ画像: 1228×868（1.41 : 1）</p>
+      <div id="baseNotice" class="warn" hidden></div>
+      <p class="hint" id="baseInfo" hidden></p>
       <div class="row tight" style="margin-top:6px;flex-wrap:wrap">
         <button class="sm" id="fitContain">画像全体を入れる</button>
         <button class="sm" id="fitCover">全面に広げる</button>
@@ -134,25 +135,25 @@
         </div>
         <div>
           <label for="bgColor">背景色</label>
-          <div class="row tight"><input type="color" id="bgColor" value="#12263f"><label style="margin:0"><input type="checkbox" id="gradient" checked=""> グラデーション</label></div>
+          <div class="row tight"><input type="color" id="bgColor" value="#12263f"><label style="margin:0"><input type="checkbox" id="gradient" checked> グラデーション</label></div>
         </div>
       </div>
       <div class="swatches" id="bgSwatches"></div>
-      <label for="zoom">ズーム <span class="val" id="zoomV">100%</span></label>
+      <label for="zoom">ズーム <span class="val" id="zoomV"></span></label>
       <input type="range" id="zoom" min="25" max="250" value="100">
       <div class="grid2">
-        <div><label for="offX">左右位置 <span class="val" id="offXV">0%</span></label><input type="range" id="offX" min="-50" max="50" value="0"></div>
-        <div><label for="offY">上下位置 <span class="val" id="offYV">0%</span></label><input type="range" id="offY" min="-50" max="50" value="0"></div>
+        <div><label for="offX">左右位置 <span class="val" id="offXV"></span></label><input type="range" id="offX" min="-50" max="50" value="0"></div>
+        <div><label for="offY">上下位置 <span class="val" id="offYV"></span></label><input type="range" id="offY" min="-50" max="50" value="0"></div>
       </div>
       <div class="grid2">
         <div>
-          <label for="dim">色を重ねる <span class="val" id="dimV">0%</span></label>
+          <label for="dim">色を重ねる <span class="val" id="dimV"></span></label>
           <div class="row tight"><input type="color" id="overlayColor" value="#000000" aria-label="重ねる色">
             <input type="range" id="dim" min="0" max="70" value="18" style="flex:1"></div>
         </div>
-        <div><label for="blur">ぼかし <span class="val" id="blurV">なし</span></label><input type="range" id="blur" min="0" max="20" value="0"></div>
+        <div><label for="blur">ぼかし <span class="val" id="blurV"></span></label><input type="range" id="blur" min="0" max="20" value="0"></div>
       </div>
-      <label><input type="checkbox" id="fillBlur" checked=""> 余白を画像のぼかしで埋める</label>
+      <label><input type="checkbox" id="fillBlur" checked> 余白を画像のぼかしで埋める</label>
       <p class="hint">写真をそのまま使うと文字が読みにくくなります。「色を重ねる」は可読性のための機能です。黒以外の色を選べば、写真全体をブランドカラーで染めることもできます。</p>
     </div>
 
@@ -161,13 +162,13 @@
       <label for="logoFile">ロゴ（文字情報と一緒に並びます。透過PNG推奨）</label>
       <input type="file" id="logoFile" accept="image/*">
       <div class="row tight" style="margin-top:6px"><button class="sm" id="logoClear">ロゴを外す</button></div>
-      <label for="logoSize">ロゴの大きさ <span class="val" id="logoSizeV">20%</span></label>
+      <label for="logoSize">ロゴの大きさ <span class="val" id="logoSizeV"></span></label>
       <input type="range" id="logoSize" min="3" max="20" value="8">
 
       <label for="mascotFile" style="margin-top:14px">マスコット画像（独立して好きな位置に置けます。透過PNG推奨）</label>
       <input type="file" id="mascotFile" accept="image/*">
       <div class="row tight" style="margin-top:6px"><button class="sm" id="mascotClear">マスコットを外す</button></div>
-      <label for="mascotSize">マスコットの大きさ <span class="val" id="mascotSizeV">39%</span></label>
+      <label for="mascotSize">マスコットの大きさ <span class="val" id="mascotSizeV"></span></label>
       <input type="range" id="mascotSize" min="5" max="60" value="28">
       <label>置き場所（9か所から選びたいときは「6. 微調整」へ）</label>
       <div class="segmented" id="mascotPos">
@@ -185,9 +186,8 @@
     <div class="card">
       <h2>3. 文字の内容</h2>
       <label for="f_company">会社名・事務所名（改行で最大4行）</label>
-      <textarea id="f_company" rows="2" placeholder="〇〇法律グループ
-弁護士法人〇〇法律事務所" style="height: 155px;"></textarea>
-      <p class="hint" id="companyHint" hidden=""></p>
+      <textarea id="f_company" rows="2" placeholder="〇〇法律グループ&#10;弁護士法人〇〇法律事務所"></textarea>
+      <p class="hint" id="companyHint" hidden></p>
       <label for="f_qual">資格名・士業表記</label><input type="text" id="f_qual" placeholder="弁護士">
       <label for="f_name">氏名</label><input type="text" id="f_name" placeholder="山田 太郎">
       <label for="f_namesub">ふりがな・英字表記</label><input type="text" id="f_namesub" placeholder="TARO YAMADA">
@@ -200,24 +200,24 @@
           <label for="qrEc" style="margin-top:0">QRの誤り訂正</label>
           <select id="qrEc">
             <option value="L">L（最小・容量優先）</option>
-            <option value="M" selected="">M（標準・推奨）</option>
+            <option value="M" selected>M（標準・推奨）</option>
             <option value="Q">Q（高）</option>
             <option value="H">H（最高・ロゴ重ね向き）</option>
           </select>
         </div>
         <div style="flex:1">
-          <label for="qrSize" style="margin-top:0">大きさ <span class="val" id="qrSizeV">13%</span></label>
+          <label for="qrSize" style="margin-top:0">大きさ <span class="val" id="qrSizeV"></span></label>
           <input type="range" id="qrSize" min="6" max="25" value="13">
         </div>
       </div>
-      <p class="hint" id="qrHint">URL などを入れるとQRコードが配置されます。</p>
+      <p class="hint" id="qrHint"></p>
       <label style="margin-top:12px">文字の大きさ（ふりがな・肩書・資格・連絡先）</label>
       <div class="segmented" id="textSizeSeg">
         <button data-size="standard" aria-pressed="false">標準</button>
         <button data-size="large" aria-pressed="true">大きめ</button>
         <button data-size="xlarge" aria-pressed="false">特大</button>
       </div>
-      <p class="hint" id="textSizeHint">4人程度の会議（2×2表示）でも読める大きさです（約16px）。あわせて少し太字にします。</p>
+      <p class="hint" id="textSizeHint"></p>
     </div>
 
     <div class="card">
@@ -231,10 +231,10 @@
       </div>
       <label style="margin-top:10px">配置の優先度</label>
       <div class="segmented">
-        <button id="marginSafe" aria-pressed="false">安全（切れにくい）</button>
-        <button id="marginWide" aria-pressed="true">見た目（端まで使う）</button>
+        <button id="marginSafe" aria-pressed="true">安全（切れにくい）</button>
+        <button id="marginWide" aria-pressed="false">見た目（端まで使う）</button>
       </div>
-      <p class="hint" id="marginHint">大人数の会議で背景が正方形に切り抜かれても、文字が切れない位置に配置します（左右 21.9% を空けます）。</p>
+      <p class="hint" id="marginHint"></p>
     </div>
 
     <div class="card tplonly">
@@ -259,14 +259,14 @@
       <label for="panelColor">パネル・帯の色（レイアウトCの帯、Dのバーにも使います）</label>
       <div class="row tight"><input type="color" id="panelColor" value="#101820">
         <input type="range" id="panelOpacity" min="0" max="100" value="50" style="flex:1">
-        <span class="val" id="panelOpacityV">50%</span></div>
+        <span class="val" id="panelOpacityV"></span></div>
       <div class="checks" style="margin-top:10px">
-        <label><input type="checkbox" id="panelOn" checked=""> 文字の下にパネルを敷く</label>
-        <label><input type="checkbox" id="shadowOn" checked=""> 文字に影を付ける</label>
+        <label><input type="checkbox" id="panelOn" checked> 文字の下にパネルを敷く</label>
+        <label><input type="checkbox" id="shadowOn" checked> 文字に影を付ける</label>
       </div>
       <p class="hint">パネルはブロックごとにも切り替えられます（「6. 微調整」）。</p>
       <div class="checks" style="margin-top:10px">
-        <label><input type="checkbox" id="autoColor" checked=""> 背景に合わせて文字色を自動で切り替える</label>
+        <label><input type="checkbox" id="autoColor" checked> 背景に合わせて文字色を自動で切り替える</label>
       </div>
       <p class="hint">文字の下の背景の明るさを測り、読みにくい場合だけ自動で直します。パネルのある所はパネルを少し濃くし（文字色はそのまま）、パネルのない所は文字色を白か濃紺に切り替えます。</p>
       <label>文字の縁取り</label>
@@ -283,31 +283,31 @@
       <label for="blockSel">調整するブロック</label>
       <select id="blockSel">
         <option value="main">主情報（会社名・氏名など）</option>
-        <option value="sub" disabled="">副情報</option>
+        <option value="sub">副情報</option>
         <option value="catch">キャッチコピー</option>
         <option value="qr">QRコード</option>
         <option value="mascot">マスコット画像</option>
       </select>
       <label>置き場所</label>
       <div class="place3" id="placeGrid">
-        <button data-place="tl" aria-pressed="false">左上</button><button data-place="tc" aria-pressed="false">上</button><button data-place="tr" aria-pressed="false">右上</button>
-        <button data-place="ml" aria-pressed="false">左</button><button data-place="mc" aria-pressed="false">中央</button><button data-place="mr" aria-pressed="false">右</button>
-        <button data-place="bl" aria-pressed="true">左下</button><button data-place="bc" aria-pressed="false">下</button><button data-place="br" aria-pressed="false">右下</button>
+        <button data-place="tl">左上</button><button data-place="tc">上</button><button data-place="tr">右上</button>
+        <button data-place="ml">左</button><button data-place="mc">中央</button><button data-place="mr">右</button>
+        <button data-place="bl">左下</button><button data-place="bc">下</button><button data-place="br">右下</button>
       </div>
       <div class="row tight" style="margin-top:6px">
         <button class="sm" id="placeDefault">レイアウトの既定位置に戻す</button>
       </div>
       <label for="blockPanel">このブロックの下のパネル</label>
-      <select id="blockPanel" disabled="">
+      <select id="blockPanel">
         <option value="auto">レイアウトの既定に従う</option>
         <option value="on">敷く</option>
         <option value="off">敷かない</option>
       </select>
       <div class="grid2">
-        <div><label for="adjX">左右の微調整 <span class="val" id="adjXV">2%</span></label><input type="range" id="adjX" min="-100" max="100" value="0"></div>
-        <div><label for="adjY">上下の微調整 <span class="val" id="adjYV">11%</span></label><input type="range" id="adjY" min="-100" max="100" value="0"></div>
+        <div><label for="adjX">左右の微調整 <span class="val" id="adjXV"></span></label><input type="range" id="adjX" min="-100" max="100" value="0"></div>
+        <div><label for="adjY">上下の微調整 <span class="val" id="adjYV"></span></label><input type="range" id="adjY" min="-100" max="100" value="0"></div>
       </div>
-      <label for="adjScale">大きさ <span class="val" id="adjScaleV">146%</span></label>
+      <label for="adjScale">大きさ <span class="val" id="adjScaleV"></span></label>
       <input type="range" id="adjScale" min="50" max="200" value="100">
       <div class="row tight" style="margin-top:8px">
         <button class="sm" id="adjReset">このブロックを初期値に戻す</button>
@@ -319,31 +319,31 @@
 
   <!-- ============ プレビュー ============ -->
   <div class="right">
-    <div class="warn" id="errorBox" hidden="" style="margin-top:0;margin-bottom:12px"></div>
+    <div class="warn" id="errorBox" hidden style="margin-top:0;margin-bottom:12px"></div>
     <div class="card">
       <h2>プレビュー</h2>
-      <div id="stage"><canvas id="preview" width="1600" height="900" class=""></canvas></div>
+      <div id="stage"><canvas id="preview"></canvas></div>
       <div class="checks" style="margin-top:10px">
-        <label><input type="checkbox" id="showSafe" checked=""> セーフゾーン</label>
+        <label><input type="checkbox" id="showSafe" checked> セーフゾーン</label>
         <label><input type="checkbox" id="showPerson"> 人物の位置</label>
         <label><input type="checkbox" id="showMirror"> 自分の画面での見え方（左右反転）</label>
       </div>
-      <div class="legend" id="legend">
+      <div class="legend" id="legend" hidden>
         <span><i class="sw" style="background:rgba(214,69,69,.30)"></i>正方形タイルで切れる</span>
         <span><i class="sw" style="background:rgba(222,170,40,.26)"></i>4:3タイルで切れる</span>
         <span><i class="sw" style="background:rgba(60,130,220,.35)"></i>人物で隠れやすい</span>
         <span><i class="sw" style="background:rgba(120,120,120,.45)"></i>参加者名の表示位置</span>
       </div>
-      <div id="mirrorNote" class="hint" hidden="">※ 自分の画面では文字が裏返って見えますが、相手には正しい向きで表示されます（各ツールの自己映像は既定で左右反転のため）。</div>
+      <div id="mirrorNote" class="hint" hidden>※ 自分の画面では文字が裏返って見えますが、相手には正しい向きで表示されます（各ツールの自己映像は既定で左右反転のため）。</div>
       <div class="tiles">
-        <figure class="tile" style="margin:0"><canvas id="t169" width="360" height="203"></canvas><figcaption>16:9（1対1など）</figcaption></figure>
-        <figure class="tile" style="margin:0"><canvas id="t43" width="360" height="270"></canvas><figcaption>4:3（少人数）</figcaption></figure>
-        <figure class="tile" style="margin:0"><canvas id="t11" width="360" height="360"></canvas><figcaption>1:1（大人数）</figcaption></figure>
+        <figure class="tile" style="margin:0"><canvas id="t169"></canvas><figcaption>16:9（1対1など）</figcaption></figure>
+        <figure class="tile" style="margin:0"><canvas id="t43"></canvas><figcaption>4:3（少人数）</figcaption></figure>
+        <figure class="tile" style="margin:0"><canvas id="t11"></canvas><figcaption>1:1（大人数）</figcaption></figure>
       </div>
       <p class="hint">会議ツールはタイルの形に合わせて背景の左右を切り落とします。3つとも情報が残っているか確認してください。</p>
       <div class="legibility" id="legibility">
-        <div class="warn" id="legBad" hidden=""></div>
-        <div class="note" id="legWeak">社名・ふりがな・肩書は、9人程度の会議（3×3表示）では約11pxになり、読みにくくなります。大人数の会議で使う場合は、文字の大きさを「特大」にしてください。（1080pの画面にタイルを並べた場合の目安です）</div>
+        <div class="warn" id="legBad" hidden></div>
+        <div class="note" id="legWeak" hidden></div>
       </div>
     </div>
 
@@ -353,7 +353,7 @@
         <div>
           <label for="sizeSel">出力サイズ</label>
           <select id="sizeSel">
-            <option value="1920x1080" selected="">Google Meet / Zoom / Teams 共通 1920×1080</option>
+            <option value="1920x1080" selected>Google Meet / Zoom / Teams 共通 1920×1080</option>
             <option value="2560x1440">高解像度 2560×1440</option>
             <option value="3840x2160">4K 3840×2160</option>
             <option value="1280x720">軽量 1280×720</option>
@@ -362,17 +362,17 @@
         <div>
           <label for="fmtSel">ファイル形式</label>
           <select id="fmtSel">
-            <option value="png" selected="">PNG（画質優先）</option>
+            <option value="png" selected>PNG（画質優先）</option>
             <option value="jpeg">JPEG（容量優先）</option>
           </select>
         </div>
       </div>
-      <div id="qualityRow" hidden="">
-        <label for="quality">JPEG画質 <span class="val" id="qualityV">88%</span></label>
+      <div id="qualityRow" hidden>
+        <label for="quality">JPEG画質 <span class="val" id="qualityV"></span></label>
         <input type="range" id="quality" min="60" max="100" value="88">
       </div>
-      <div class="sizeinfo" id="sizeInfo">推定ファイルサイズ: 約 0.54 MB（1920x1080 / PNG）</div>
-      <div id="sizeWarn" class="warn" hidden=""></div>
+      <div class="sizeinfo" id="sizeInfo">推定ファイルサイズ: 計算中…</div>
+      <div id="sizeWarn" class="warn" hidden></div>
       <div class="row" style="margin-top:10px">
         <button class="primary" id="download">背景画像をダウンロード</button>
       </div>
@@ -2077,6 +2077,5 @@ const QR = (() => {
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(render);
 })();
 </script>
-
-
-</body></html>
+</body>
+</html>

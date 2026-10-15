@@ -16,6 +16,10 @@ index.html を実際の Chromium で開き、次を確認する。
   - 各ブロックを9か所に置け、下端まで下げてもはみ出さないこと
   - 重ねる色・パネル色・配色プリセットが効くこと
   - 選択中ブロックの点線が、プレビューには出て書き出した画像には入らないこと
+  - 背景に合わせた文字色の自動切替・パネルの自動補強・縁取り・ブロックごとのパネルが効くこと
+  - 文字の大きさの段階（標準／大きめ／特大）と、読みにくさの注意が正しく出ること
+  - 入れた背景画像が開き直しても残り、既定テンプレートの更新時は会社の背景が優先されること
+  - 同じファイルを選び直しても反応し、読み込めない画像では理由を表示すること
 
 必要なもの:
     pip install playwright opencv-python-headless numpy
@@ -39,6 +43,19 @@ def check(name, ok, detail=''):
     print(('  OK  ' if ok else '  NG  ') + name + (f' — {detail}' if detail and not ok else ''))
     if not ok:
         failures.append(name)
+
+_LIN = np.array([(v / 255) / 12.92 if v / 255 <= 0.03928 else ((v / 255 + 0.055) / 1.055) ** 2.4
+                 for v in range(256)])
+
+
+def rel_lum(bgr):
+    """WCAG 2.x の相対輝度（BGR の画素配列を受け取る）"""
+    return 0.2126 * _LIN[bgr[..., 2]] + 0.7152 * _LIN[bgr[..., 1]] + 0.0722 * _LIN[bgr[..., 0]]
+
+
+def contrast(l1, l2):
+    return (np.maximum(l1, l2) + 0.05) / (np.minimum(l1, l2) + 0.05)
+
 
 def plain_copy(tmp):
     """既定テンプレートを外したコピーを作る。
@@ -79,9 +96,12 @@ def make_assets(tmp):
         cv2.line(im, (w // 2, 0), (w // 2, h), (255, 0, 0), 8)
         cv2.imwrite(f'{tmp}/ar_{name}.png', im)
     # 背景が引き継がれたか一目で分かる単色画像
-    green = np.zeros((1080, 1920, 3), np.uint8)
-    green[:, :] = (40, 140, 40)
-    cv2.imwrite(f'{tmp}/green.png', green)
+    for name, bgr in (('green', (40, 140, 40)), ('red', (30, 30, 200)), ('blue', (200, 60, 30))):
+        im = np.zeros((1080, 1920, 3), np.uint8)
+        im[:, :] = bgr
+        cv2.imwrite(f'{tmp}/{name}.png', im)
+    # 拡張子だけ HEIC の読み込めないファイル
+    open(f'{tmp}/photo.heic', 'wb').write(b'\x00\x00\x00\x18ftypheic' + b'\x00' * 200)
     # 左半分=赤 / 右半分=青 の非対称なマスコット（左右反転を検出できる）
     mas = np.zeros((400, 300, 4), np.uint8)
     cv2.rectangle(mas, (0, 100), (150, 300), (0, 0, 255, 255), -1)
@@ -419,6 +439,228 @@ def main():
         check('プレビューには点線が出る', n > 200, f'該当画素 {n}')
         page.click('#baseClear')
         page.wait_for_timeout(300)
+
+        # --- 文字の読みやすさ ---
+        print('[文字の読みやすさ]')
+        page.click('#baseClear')
+        page.click('#logoClear')
+        page.click('#themes button[data-theme="dark"]')
+        page.uncheck('#gradient')
+        set_range('dim', 0)
+        set_color('bgColor', '#ffffff')
+        page.click('#layouts button[data-layout="A"]')
+        page.click('#adjResetAll')
+        for f in ('f_company', 'f_qual', 'f_name', 'f_namesub', 'f_title', 'f_contact', 'f_qr', 'f_catch'):
+            page.fill('#' + f, '')
+        page.wait_for_timeout(500)
+
+        def shot(tag):
+            with page.expect_download() as d:
+                page.click('#download')
+            path = f'{tmp}/leg_{tag}.png'
+            d.value.save_as(path)
+            return cv2.imread(path)
+
+        blank = shot('blank')
+
+        def drawn(im):
+            """何も描いていない状態から変化した画素"""
+            return np.abs(im.astype(int) - blank.astype(int)).sum(axis=2) > 60
+
+        # 1) パネルのないキャッチコピーを白背景に置く
+        page.fill('#f_catch', 'はじめの一歩を、ともに。')
+        page.uncheck('#autoColor')
+        page.wait_for_timeout(500)
+        im = shot('catch_off')
+        m = drawn(im)
+        c_off = float(np.median(contrast(rel_lum(im[m]), rel_lum(blank[m]))))
+        page.check('#autoColor')
+        page.wait_for_timeout(500)
+        im = shot('catch_on')
+        m = drawn(im)
+        c_on = float(np.median(contrast(rel_lum(im[m]), rel_lum(blank[m]))))
+        check('自動切替なしでは白背景の白文字が読めない（比較の前提）', c_off < 3, f'{c_off:.2f}:1')
+        check('自動切替で白背景のキャッチコピーが読める（4.5:1 以上）', c_on >= 4.5, f'{c_on:.2f}:1')
+
+        # 2) 縁取り: 自動切替を切って白背景に白文字を置き、縁取りで輪郭が出るか
+        page.uncheck('#autoColor')
+        page.wait_for_timeout(300)
+        dark_none = int((rel_lum(shot('ol_none')) < 0.2).sum())
+        page.click('#outlineSeg button[data-outline="thick"]')
+        page.wait_for_timeout(500)
+        dark_thick = int((rel_lum(shot('ol_thick')) < 0.2).sum())
+        check('縁取り「太」で白背景の白文字に輪郭が出る', dark_thick > dark_none + 2000,
+              f'暗い画素 なし={dark_none} / 太={dark_thick}')
+        page.click('#outlineSeg button[data-outline="none"]')
+        page.check('#autoColor')
+        page.fill('#f_catch', '')
+
+        # 3) パネルの自動補強: 白背景に既定のパネル（濃紺50%）＋白文字
+        page.fill('#f_name', '山田 太郎')
+        page.wait_for_timeout(500)
+
+        def panel_contrast(tag):
+            im = shot(tag)
+            ys, xs = np.nonzero(drawn(im))
+            px = im[ys.min() + 20, xs.min() + 20]          # パネルの内側の余白（文字のない所）
+            return float(contrast(1.0, rel_lum(px[None, :])[0])), im, (xs, ys)
+
+        page.uncheck('#autoColor')
+        page.wait_for_timeout(400)
+        p_off, _, _ = panel_contrast('panel_off')
+        page.check('#autoColor')
+        page.wait_for_timeout(400)
+        p_on, im, (xs, ys) = panel_contrast('panel_on')
+        check('自動切替なしでは灰色のパネルに白文字で基準未満（比較の前提）', p_off < 4.5, f'{p_off:.2f}:1')
+        check('パネルを自動で濃くして白文字が 4.5:1 以上になる', p_on >= 4.5, f'{p_on:.2f}:1')
+        bright = float(rel_lum(im[ys.min():ys.max(), xs.min():xs.max()]).max())
+        check('パネル上の文字色は白のまま保たれる', bright > 0.95, f'最も明るい画素の輝度 {bright:.2f}')
+
+        # 4) ブロックごとのパネル
+        set_color('panelColor', '#ff00ff')
+        set_range('panelOpacity', 100)
+        page.fill('#f_catch', 'キャッチ')
+        page.select_option('#blockSel', 'catch')
+        page.select_option('#blockPanel', 'on')
+        page.select_option('#blockSel', 'main')
+        page.select_option('#blockPanel', 'off')
+        page.wait_for_timeout(600)
+        im = shot('blockpanel')
+        mag = cv2.inRange(im, np.array([200, 0, 200]), np.array([255, 60, 255]))
+        ys, xs = np.nonzero(mag)
+        check('キャッチコピーだけにパネルを敷ける', len(ys) > 0 and ys.max() < 540,
+              f'パネルの下端 y={ys.max() if len(ys) else "-"}')
+        page.click('#adjResetAll')
+        page.click('#themes button[data-theme="dark"]')
+        set_range('dim', 0)            # プリセットで「色を重ねる」が戻るので、比較用に 0 にする
+        page.fill('#f_catch', '')
+        page.fill('#f_name', '')
+
+        # 5) 文字の大きさの段階
+        page.uncheck('#panelOn')
+        page.uncheck('#shadowOn')       # 影のにじみを測定に含めない
+        page.fill('#f_namesub', 'TARO YAMADA')
+
+        def text_height(im):
+            """白背景の上の文字（自動調整で濃紺になる）だけを拾って高さを測る。
+            金色の区切り線や背景は明るいので含まれない"""
+            rows = np.nonzero((rel_lum(im) < 0.2).any(axis=1))[0]
+            return int(rows[-1] - rows[0] + 1)
+
+        heights = {}
+        for lv in ('standard', 'large', 'xlarge'):
+            page.click(f'#textSizeSeg button[data-size="{lv}"]')
+            page.wait_for_timeout(500)
+            heights[lv] = text_height(shot('size_' + lv))
+            if lv == 'standard':
+                check('「標準」ではふりがなに強い注意が出る', 'ふりがな' in page.text_content('#legBad'),
+                      page.text_content('#legBad')[:40])
+            if lv == 'large':
+                check('「大きめ」では強い注意は消え、大人数向けの注意だけ出る',
+                      page.locator('#legBad').is_hidden() and 'ふりがな' in page.text_content('#legWeak'))
+            if lv == 'xlarge':
+                check('「特大」では注意が出ない',
+                      page.locator('#legBad').is_hidden() and page.locator('#legWeak').is_hidden())
+        r = heights['large'] / heights['standard']
+        check('「大きめ」でふりがなが約1.5倍になる（2.0% → 3.0%）', 1.35 < r < 1.65, f'{heights}')
+        check('「特大」は「大きめ」より大きい', heights['xlarge'] > heights['large'], f'{heights}')
+        page.check('#panelOn')
+        page.check('#shadowOn')
+        page.fill('#f_namesub', '')
+        page.click('#textSizeSeg button[data-size="large"]')
+
+        # 6) テンプレートに設定が保存される
+        page.click('#outlineSeg button[data-outline="thin"]')
+        with page.expect_download() as d:
+            page.click('#tplSave')
+        d.value.save_as(f'{tmp}/tpl_leg.json')
+        t = json.load(open(f'{tmp}/tpl_leg.json', encoding='utf-8'))
+        check('読みやすさの設定がテンプレートに保存される',
+              t.get('autoColor') is True and t.get('outline') == 'thin'
+              and t.get('textSize') == 'large' and isinstance(t.get('blockPanel'), dict),
+              str({k: t.get(k) for k in ('autoColor', 'outline', 'textSize', 'blockPanel')}))
+        page.click('#outlineSeg button[data-outline="none"]')
+        set_color('bgColor', '#12263f')
+        page.wait_for_timeout(300)
+
+        # --- 背景画像の保存と読み込みエラー ---
+        print('[背景画像の保存と読み込みエラー]')
+
+        def tile_color(pg):
+            """プレビューの 16:9 タイルの左上の色（RGB）"""
+            return pg.evaluate("""() => { const c = document.getElementById('t169');
+                return Array.from(c.getContext('2d').getImageData(5, 5, 1, 1).data.slice(0, 3)); }""")
+
+        def is_(rgb, name):
+            r, g, b = rgb
+            return {'green': g > 100 and r < 90, 'red': r > 150 and g < 80,
+                    'blue': b > 150 and r < 80}[name]
+
+        shared = os.path.join(tmp, 'shared', 'index.html')   # 社内の共有先に置かれた配布用ファイル
+        os.makedirs(os.path.dirname(shared), exist_ok=True)
+        page.click('#textSizeSeg button[data-size="large"]')
+        page.set_input_files('#baseFile', f'{tmp}/green.png')
+        page.wait_for_timeout(800)
+        with page.expect_download() as d:
+            page.click('#tplEmbed')
+        d.value.save_as(shared)                               # 会社の背景＝緑（版1）
+
+        ctx3 = browser.new_context(viewport={'width': 1500, 'height': 1200})
+        p4 = ctx3.new_page()
+        p4.on('pageerror', lambda e: errors.append(f'persist pageerror: {e}'))
+        p4.on('dialog', lambda dl: (errors.append('想定外のダイアログ: ' + dl.message), dl.dismiss()))
+        p4.goto('file://' + shared)
+        p4.wait_for_timeout(1500)
+        check('配布用ファイルは会社の背景で開く', is_(tile_color(p4), 'green'), str(tile_color(p4)))
+        p4.click('#modeFull')
+        p4.set_input_files('#baseFile', f'{tmp}/red.png')
+        p4.wait_for_timeout(1000)
+        p4.reload()
+        p4.wait_for_timeout(2500)
+        check('自分で入れた背景が、開き直しても残る', is_(tile_color(p4), 'red'), str(tile_color(p4)))
+        p4.click('#modeFull')
+        p4.click('#baseClear')
+        p4.wait_for_timeout(600)
+        p4.reload()
+        p4.wait_for_timeout(2500)
+        c = tile_color(p4)                     # 外すと背景色が出る（会社の緑にも、外す前の赤にも戻らない）
+        check('背景を外した状態も、開き直して既定に戻らない',
+              not is_(c, 'green') and not is_(c, 'red'), str(c))
+
+        # 管理者が既定テンプレートを更新（会社の背景＝青・版2）して共有先を置き換える
+        page.set_input_files('#baseFile', f'{tmp}/blue.png')
+        page.wait_for_timeout(800)
+        with page.expect_download() as d:
+            page.click('#tplEmbed')
+        d.value.save_as(shared)
+        p4.reload()
+        p4.wait_for_timeout(2500)
+        check('既定テンプレートが更新されたら、会社の新しい背景が優先される',
+              is_(tile_color(p4), 'blue'), str(tile_color(p4)))
+
+        # 同じファイルの選び直し: 選び直すたびに読み込み処理（ズームの初期化）が走ること
+        p4.click('#modeFull')
+        p4.set_input_files('#baseFile', f'{tmp}/red.png')
+        p4.wait_for_timeout(800)
+        p4.evaluate("() => { const e = document.getElementById('zoom'); e.value = 160; e.dispatchEvent(new Event('input')); }")
+        with p4.expect_file_chooser() as fc:
+            p4.click('#baseFile')
+        check('ファイル選択を開くと前回の選択が空になる',
+              p4.evaluate("document.getElementById('baseFile').value") == '')
+        fc.value.set_files(f'{tmp}/red.png')
+        p4.wait_for_timeout(800)
+        check('同じファイルを選び直しても反応する', p4.input_value('#zoom') == '100',
+              f"ズーム={p4.input_value('#zoom')}（再読み込みされると100に戻る）")
+
+        # 読み込めない画像
+        p4.set_input_files('#baseFile', f'{tmp}/photo.heic')
+        p4.wait_for_timeout(1000)
+        check('HEIC など読み込めない画像では理由を表示する', 'HEIC' in p4.text_content('#baseNotice'),
+              p4.text_content('#baseNotice')[:40])
+        check('予期しないエラーの表示は出ていない', p4.locator('#errorBox').is_hidden(),
+              p4.text_content('#errorBox')[:60])
+        ctx3.close()
+        page.click('#baseClear')
 
         # --- 会社名の複数行表示 ---
         print('[会社名の複数行]')
