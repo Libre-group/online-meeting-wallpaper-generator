@@ -319,6 +319,7 @@
 
   <!-- ============ プレビュー ============ -->
   <div class="right">
+    <div class="warn" id="errorBox" hidden style="margin-top:0;margin-bottom:12px"></div>
     <div class="card">
       <h2>プレビュー</h2>
       <div id="stage"><canvas id="preview"></canvas></div>
@@ -723,6 +724,17 @@ const QR = (() => {
 (() => {
   'use strict';
   const $ = (id) => document.getElementById(id);
+
+  // 予期しないエラーで処理が止まったとき、何も起きないように見えないよう画面に出す
+  function showError(msg) {
+    const el = $('errorBox');
+    if (!el) return;
+    el.hidden = false;
+    el.textContent = `⚠ 処理中にエラーが発生しました（${msg}）。ページを再読み込みしてください。`
+      + 'くり返し起きる場合は、この文面と、使っているブラウザ・選んだ画像の形式を担当者に伝えてください。';
+  }
+  window.addEventListener('error', (e) => showError(e.message || 'unknown'));
+  window.addEventListener('unhandledrejection', (e) => showError(String(e.reason)));
 
   const FONTS = {
     gothic:  '"Hiragino Kaku Gothic ProN","Yu Gothic",YuGothic,Meiryo,"Noto Sans JP","MS PGothic",sans-serif',
@@ -1437,15 +1449,76 @@ const QR = (() => {
   }
 
   /* ================= 画像の読み込み ================= */
-  function readImage(file, cb) {
+  // onFail を省略したときはダイアログで知らせる
+  function readImage(file, cb, onFail) {
+    const fail = onFail || ((m) => alert(m));
+    const heic = /\.(heic|heif)$/i.test(file.name) || /heic|heif/i.test(file.type);
     const fr = new FileReader();
+    fr.onerror = () => fail('ファイルを読み込めませんでした。別のファイルをお試しください。');
     fr.onload = () => {
       const img = new Image();
       img.onload = () => cb(img, fr.result);
-      img.onerror = () => alert('画像を読み込めませんでした。別のファイルをお試しください。');
+      img.onerror = () => fail(heic
+        ? 'HEIC形式（iPhoneの写真の標準形式）は、このブラウザでは読み込めません。JPEGかPNGに変換してから選んでください。'
+        : 'この画像はブラウザで読み込めませんでした。JPEGかPNGでお試しください。');
       img.src = fr.result;
     };
     fr.readAsDataURL(file);
+  }
+
+  // 同じファイルを選び直しても反応するよう、ファイル選択を開く前に選択状態を空にする
+  // （ブラウザは前回と同じファイルが選ばれると変更通知を出さないため）
+  for (const id of ['baseFile', 'logoFile', 'mascotFile']) {
+    $(id).addEventListener('click', (e) => { e.target.value = ''; });
+  }
+
+  /* ---- 背景画像の保存 ----
+     背景画像は大きく、自動保存（localStorage・上限 約5MB）に入らない。
+     保存しないと、開き直したときに HTML に埋め込んだ既定の背景へ戻ってしまうため、
+     容量の大きい IndexedDB に保存する。既定テンプレートの版（_embeddedStamp）も一緒に記録し、
+     管理者が既定テンプレートを更新したときは、新しい会社の背景を優先する。 */
+  const IDB_NAME = 'meeting-bg-generator', IDB_STORE = 'images';
+  function idbOpen() {
+    return new Promise((resolve, reject) => {
+      if (!window.indexedDB) { reject(new Error('IndexedDB なし')); return; }
+      const r = indexedDB.open(IDB_NAME, 1);
+      r.onupgradeneeded = () => r.result.createObjectStore(IDB_STORE);
+      r.onsuccess = () => resolve(r.result);
+      r.onerror = () => reject(r.error);
+    });
+  }
+  async function idbPut(key, value) {
+    try {
+      const db = await idbOpen();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(IDB_STORE, 'readwrite');
+        tx.objectStore(IDB_STORE).put(value, key);
+        tx.oncomplete = resolve; tx.onerror = () => reject(tx.error);
+      });
+      db.close();
+    } catch { /* 保存できない環境（プライベートモード等）では諦める */ }
+  }
+  async function idbGet(key) {
+    try {
+      const db = await idbOpen();
+      const v = await new Promise((resolve, reject) => {
+        const r = db.transaction(IDB_STORE, 'readonly').objectStore(IDB_STORE).get(key);
+        r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error);
+      });
+      db.close();
+      return v;
+    } catch { return undefined; }
+  }
+  const saveBase = () => idbPut('base', { src: S.baseSrc, stamp: S._embeddedStamp || null, at: Date.now() });
+
+  function showBaseInfo(img) {
+    const info = $('baseInfo');
+    info.hidden = !img;
+    if (img) info.textContent = `読み込んだ画像: ${img.naturalWidth}×${img.naturalHeight}（${describeRatio(img.naturalWidth, img.naturalHeight)}）`;
+  }
+  function baseFailed(msg) {
+    const n = $('baseNotice');
+    n.hidden = false; n.textContent = '⚠ ' + msg;
   }
 
   // 900:1600 のような値を 9:16 と表す
@@ -1469,9 +1542,8 @@ const QR = (() => {
     const car = ow / oh, ar = img.naturalWidth / img.naturalHeight;
     // 「全面に広げる」にしたときに切り取られる割合
     const cut = ar > car ? 1 - car / ar : 1 - ar / car;
-    const info = $('baseInfo');
-    info.hidden = false;
-    info.textContent = `読み込んだ画像: ${img.naturalWidth}×${img.naturalHeight}（${describeRatio(img.naturalWidth, img.naturalHeight)}）`;
+    showBaseInfo(img);
+    saveBase();
     // 画像を入れ替えたら、その画像に合った既定から始める
     S.zoom = 100; S.offX = 0; S.offY = 0;
     S.fit = cut > 0.08 ? 'contain' : 'cover';
@@ -1490,11 +1562,13 @@ const QR = (() => {
 
   $('baseFile').addEventListener('change', (e) => {
     const f = e.target.files[0]; if (!f) return;
-    readImage(f, onBaseImage);
+    readImage(f, onBaseImage, baseFailed);
   });
   $('baseClear').addEventListener('click', () => {
     S.baseImg = null; S.baseSrc = null; $('baseFile').value = '';
-    $('baseInfo').hidden = true; $('baseNotice').hidden = true; render();
+    $('baseInfo').hidden = true; $('baseNotice').hidden = true;
+    saveBase();                     // 外したことも覚えておく（開き直しても既定の背景に戻らない）
+    render();
   });
   $('logoFile').addEventListener('change', (e) => {
     const f = e.target.files[0]; if (!f) return;
@@ -1813,6 +1887,7 @@ const QR = (() => {
       try { d = JSON.parse(fr.result); } catch { alert('テンプレートを読み込めませんでした。'); return; }
       if (!d || d._format !== 'meeting-bg-template') { alert('このファイルはテンプレートではありません。'); return; }
       applyState(d, /*keepPersonal=*/true);
+      if (d.baseSrc) saveBase();
       setMode('name');
     };
     fr.readAsText(f);
@@ -1846,7 +1921,10 @@ const QR = (() => {
     };
     if (d.logoSrc !== undefined) { S.logoSrc = d.logoSrc; loadInto(d.logoSrc, (i) => S.logoImg = i); }
     if (d.mascotSrc !== undefined) { S.mascotSrc = d.mascotSrc; loadInto(d.mascotSrc, (i) => S.mascotImg = i); }
-    if (d.baseSrc !== undefined && d.baseSrc) { S.baseSrc = d.baseSrc; loadInto(d.baseSrc, (i) => S.baseImg = i); }
+    if (d.baseSrc !== undefined && d.baseSrc) {
+      S.baseSrc = d.baseSrc;
+      loadInto(d.baseSrc, (i) => { if (S.baseSrc === d.baseSrc) { S.baseImg = i; showBaseInfo(i); } });
+    }
     if (pending === 0) done();
   }
 
@@ -1978,6 +2056,18 @@ const QR = (() => {
     S.text.catch = 'はじめの一歩を、ともに。';
   }
   if (embedded) showEmbeddedInfo(embedded._stamp, false);
+
+  // 自分で入れた背景画像を復元する。既定テンプレートの版が変わっていたら（管理者が更新した）
+  // 新しい会社の背景を優先するため、版が同じときだけ復元する
+  idbGet('base').then((rec) => {
+    if (!rec || (rec.stamp || null) !== (S._embeddedStamp || null)) return;
+    const src = rec.src || null;
+    S.baseSrc = src;
+    if (!src) { S.baseImg = null; showBaseInfo(null); render(); return; }
+    const img = new Image();
+    img.onload = () => { if (S.baseSrc === src) { S.baseImg = img; showBaseInfo(img); render(); } };
+    img.src = src;
+  });
   syncFormFromState();
   syncBlockOptions();
   $('legend').hidden = !S.showSafe;
