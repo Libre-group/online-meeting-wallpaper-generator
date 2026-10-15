@@ -16,6 +16,8 @@ index.html を実際の Chromium で開き、次を確認する。
   - 各ブロックを9か所に置け、下端まで下げてもはみ出さないこと
   - 重ねる色・パネル色・配色プリセットが効くこと
   - 選択中ブロックの点線が、プレビューには出て書き出した画像には入らないこと
+  - 背景に合わせた文字色の自動切替・パネルの自動補強・縁取り・ブロックごとのパネルが効くこと
+  - 文字の大きさの段階（標準／大きめ／特大）と、読みにくさの注意が正しく出ること
 
 必要なもの:
     pip install playwright opencv-python-headless numpy
@@ -39,6 +41,19 @@ def check(name, ok, detail=''):
     print(('  OK  ' if ok else '  NG  ') + name + (f' — {detail}' if detail and not ok else ''))
     if not ok:
         failures.append(name)
+
+_LIN = np.array([(v / 255) / 12.92 if v / 255 <= 0.03928 else ((v / 255 + 0.055) / 1.055) ** 2.4
+                 for v in range(256)])
+
+
+def rel_lum(bgr):
+    """WCAG 2.x の相対輝度（BGR の画素配列を受け取る）"""
+    return 0.2126 * _LIN[bgr[..., 2]] + 0.7152 * _LIN[bgr[..., 1]] + 0.0722 * _LIN[bgr[..., 0]]
+
+
+def contrast(l1, l2):
+    return (np.maximum(l1, l2) + 0.05) / (np.minimum(l1, l2) + 0.05)
+
 
 def plain_copy(tmp):
     """既定テンプレートを外したコピーを作る。
@@ -418,6 +433,149 @@ def main():
         }""")
         check('プレビューには点線が出る', n > 200, f'該当画素 {n}')
         page.click('#baseClear')
+        page.wait_for_timeout(300)
+
+        # --- 文字の読みやすさ ---
+        print('[文字の読みやすさ]')
+        page.click('#baseClear')
+        page.click('#logoClear')
+        page.click('#themes button[data-theme="dark"]')
+        page.uncheck('#gradient')
+        set_range('dim', 0)
+        set_color('bgColor', '#ffffff')
+        page.click('#layouts button[data-layout="A"]')
+        page.click('#adjResetAll')
+        for f in ('f_company', 'f_qual', 'f_name', 'f_namesub', 'f_title', 'f_contact', 'f_qr', 'f_catch'):
+            page.fill('#' + f, '')
+        page.wait_for_timeout(500)
+
+        def shot(tag):
+            with page.expect_download() as d:
+                page.click('#download')
+            path = f'{tmp}/leg_{tag}.png'
+            d.value.save_as(path)
+            return cv2.imread(path)
+
+        blank = shot('blank')
+
+        def drawn(im):
+            """何も描いていない状態から変化した画素"""
+            return np.abs(im.astype(int) - blank.astype(int)).sum(axis=2) > 60
+
+        # 1) パネルのないキャッチコピーを白背景に置く
+        page.fill('#f_catch', 'はじめの一歩を、ともに。')
+        page.uncheck('#autoColor')
+        page.wait_for_timeout(500)
+        im = shot('catch_off')
+        m = drawn(im)
+        c_off = float(np.median(contrast(rel_lum(im[m]), rel_lum(blank[m]))))
+        page.check('#autoColor')
+        page.wait_for_timeout(500)
+        im = shot('catch_on')
+        m = drawn(im)
+        c_on = float(np.median(contrast(rel_lum(im[m]), rel_lum(blank[m]))))
+        check('自動切替なしでは白背景の白文字が読めない（比較の前提）', c_off < 3, f'{c_off:.2f}:1')
+        check('自動切替で白背景のキャッチコピーが読める（4.5:1 以上）', c_on >= 4.5, f'{c_on:.2f}:1')
+
+        # 2) 縁取り: 自動切替を切って白背景に白文字を置き、縁取りで輪郭が出るか
+        page.uncheck('#autoColor')
+        page.wait_for_timeout(300)
+        dark_none = int((rel_lum(shot('ol_none')) < 0.2).sum())
+        page.click('#outlineSeg button[data-outline="thick"]')
+        page.wait_for_timeout(500)
+        dark_thick = int((rel_lum(shot('ol_thick')) < 0.2).sum())
+        check('縁取り「太」で白背景の白文字に輪郭が出る', dark_thick > dark_none + 2000,
+              f'暗い画素 なし={dark_none} / 太={dark_thick}')
+        page.click('#outlineSeg button[data-outline="none"]')
+        page.check('#autoColor')
+        page.fill('#f_catch', '')
+
+        # 3) パネルの自動補強: 白背景に既定のパネル（濃紺50%）＋白文字
+        page.fill('#f_name', '山田 太郎')
+        page.wait_for_timeout(500)
+
+        def panel_contrast(tag):
+            im = shot(tag)
+            ys, xs = np.nonzero(drawn(im))
+            px = im[ys.min() + 20, xs.min() + 20]          # パネルの内側の余白（文字のない所）
+            return float(contrast(1.0, rel_lum(px[None, :])[0])), im, (xs, ys)
+
+        page.uncheck('#autoColor')
+        page.wait_for_timeout(400)
+        p_off, _, _ = panel_contrast('panel_off')
+        page.check('#autoColor')
+        page.wait_for_timeout(400)
+        p_on, im, (xs, ys) = panel_contrast('panel_on')
+        check('自動切替なしでは灰色のパネルに白文字で基準未満（比較の前提）', p_off < 4.5, f'{p_off:.2f}:1')
+        check('パネルを自動で濃くして白文字が 4.5:1 以上になる', p_on >= 4.5, f'{p_on:.2f}:1')
+        bright = float(rel_lum(im[ys.min():ys.max(), xs.min():xs.max()]).max())
+        check('パネル上の文字色は白のまま保たれる', bright > 0.95, f'最も明るい画素の輝度 {bright:.2f}')
+
+        # 4) ブロックごとのパネル
+        set_color('panelColor', '#ff00ff')
+        set_range('panelOpacity', 100)
+        page.fill('#f_catch', 'キャッチ')
+        page.select_option('#blockSel', 'catch')
+        page.select_option('#blockPanel', 'on')
+        page.select_option('#blockSel', 'main')
+        page.select_option('#blockPanel', 'off')
+        page.wait_for_timeout(600)
+        im = shot('blockpanel')
+        mag = cv2.inRange(im, np.array([200, 0, 200]), np.array([255, 60, 255]))
+        ys, xs = np.nonzero(mag)
+        check('キャッチコピーだけにパネルを敷ける', len(ys) > 0 and ys.max() < 540,
+              f'パネルの下端 y={ys.max() if len(ys) else "-"}')
+        page.click('#adjResetAll')
+        page.click('#themes button[data-theme="dark"]')
+        set_range('dim', 0)            # プリセットで「色を重ねる」が戻るので、比較用に 0 にする
+        page.fill('#f_catch', '')
+        page.fill('#f_name', '')
+
+        # 5) 文字の大きさの段階
+        page.uncheck('#panelOn')
+        page.uncheck('#shadowOn')       # 影のにじみを測定に含めない
+        page.fill('#f_namesub', 'TARO YAMADA')
+
+        def text_height(im):
+            """白背景の上の文字（自動調整で濃紺になる）だけを拾って高さを測る。
+            金色の区切り線や背景は明るいので含まれない"""
+            rows = np.nonzero((rel_lum(im) < 0.2).any(axis=1))[0]
+            return int(rows[-1] - rows[0] + 1)
+
+        heights = {}
+        for lv in ('standard', 'large', 'xlarge'):
+            page.click(f'#textSizeSeg button[data-size="{lv}"]')
+            page.wait_for_timeout(500)
+            heights[lv] = text_height(shot('size_' + lv))
+            if lv == 'standard':
+                check('「標準」ではふりがなに強い注意が出る', 'ふりがな' in page.text_content('#legBad'),
+                      page.text_content('#legBad')[:40])
+            if lv == 'large':
+                check('「大きめ」では強い注意は消え、大人数向けの注意だけ出る',
+                      page.locator('#legBad').is_hidden() and 'ふりがな' in page.text_content('#legWeak'))
+            if lv == 'xlarge':
+                check('「特大」では注意が出ない',
+                      page.locator('#legBad').is_hidden() and page.locator('#legWeak').is_hidden())
+        r = heights['large'] / heights['standard']
+        check('「大きめ」でふりがなが約1.5倍になる（2.0% → 3.0%）', 1.35 < r < 1.65, f'{heights}')
+        check('「特大」は「大きめ」より大きい', heights['xlarge'] > heights['large'], f'{heights}')
+        page.check('#panelOn')
+        page.check('#shadowOn')
+        page.fill('#f_namesub', '')
+        page.click('#textSizeSeg button[data-size="large"]')
+
+        # 6) テンプレートに設定が保存される
+        page.click('#outlineSeg button[data-outline="thin"]')
+        with page.expect_download() as d:
+            page.click('#tplSave')
+        d.value.save_as(f'{tmp}/tpl_leg.json')
+        t = json.load(open(f'{tmp}/tpl_leg.json', encoding='utf-8'))
+        check('読みやすさの設定がテンプレートに保存される',
+              t.get('autoColor') is True and t.get('outline') == 'thin'
+              and t.get('textSize') == 'large' and isinstance(t.get('blockPanel'), dict),
+              str({k: t.get(k) for k in ('autoColor', 'outline', 'textSize', 'blockPanel')}))
+        page.click('#outlineSeg button[data-outline="none"]')
+        set_color('bgColor', '#12263f')
         page.wait_for_timeout(300)
 
         # --- 会社名の複数行表示 ---

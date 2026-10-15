@@ -53,6 +53,8 @@
   .place3{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;max-width:168px}
   .place3 button{padding:6px 0;font-size:10.5px;line-height:1.2;white-space:nowrap}
   .place3 button[aria-pressed=true]{background:var(--accent-weak);border-color:var(--accent);color:var(--accent);font-weight:700}
+  .legibility{margin-top:8px}
+  .legibility .note{background:#eef4fb;border:1px solid #cfe0f3;color:#2c4a6b;padding:8px 10px;border-radius:6px;font-size:12px;margin-top:6px}
   .themes button[aria-pressed=true]{background:var(--accent-weak);border-color:var(--accent);color:var(--accent);font-weight:700}
   .checks{display:flex;flex-wrap:wrap;gap:10px;font-size:12px}
   .checks label{display:inline-flex;align-items:center;gap:4px;margin:0;color:var(--text)}
@@ -209,6 +211,13 @@
         </div>
       </div>
       <p class="hint" id="qrHint"></p>
+      <label style="margin-top:12px">文字の大きさ（ふりがな・肩書・資格・連絡先）</label>
+      <div class="segmented" id="textSizeSeg">
+        <button data-size="standard" aria-pressed="false">標準</button>
+        <button data-size="large" aria-pressed="true">大きめ</button>
+        <button data-size="xlarge" aria-pressed="false">特大</button>
+      </div>
+      <p class="hint" id="textSizeHint"></p>
     </div>
 
     <div class="card">
@@ -255,6 +264,18 @@
         <label><input type="checkbox" id="panelOn" checked> 文字の下にパネルを敷く</label>
         <label><input type="checkbox" id="shadowOn" checked> 文字に影を付ける</label>
       </div>
+      <p class="hint">パネルはブロックごとにも切り替えられます（「6. 微調整」）。</p>
+      <div class="checks" style="margin-top:10px">
+        <label><input type="checkbox" id="autoColor" checked> 背景に合わせて文字色を自動で切り替える</label>
+      </div>
+      <p class="hint">文字の下の背景の明るさを測り、読みにくい場合だけ自動で直します。パネルのある所はパネルを少し濃くし（文字色はそのまま）、パネルのない所は文字色を白か濃紺に切り替えます。</p>
+      <label>文字の縁取り</label>
+      <div class="segmented" id="outlineSeg">
+        <button data-outline="none" aria-pressed="true">なし</button>
+        <button data-outline="thin" aria-pressed="false">細</button>
+        <button data-outline="thick" aria-pressed="false">太</button>
+      </div>
+      <p class="hint">写真のように明るい所と暗い所が混ざった背景では、縁取りを付けると読みやすくなります。</p>
     </div>
 
     <div class="card">
@@ -276,6 +297,12 @@
       <div class="row tight" style="margin-top:6px">
         <button class="sm" id="placeDefault">レイアウトの既定位置に戻す</button>
       </div>
+      <label for="blockPanel">このブロックの下のパネル</label>
+      <select id="blockPanel">
+        <option value="auto">レイアウトの既定に従う</option>
+        <option value="on">敷く</option>
+        <option value="off">敷かない</option>
+      </select>
       <div class="grid2">
         <div><label for="adjX">左右の微調整 <span class="val" id="adjXV"></span></label><input type="range" id="adjX" min="-100" max="100" value="0"></div>
         <div><label for="adjY">上下の微調整 <span class="val" id="adjYV"></span></label><input type="range" id="adjY" min="-100" max="100" value="0"></div>
@@ -313,6 +340,10 @@
         <figure class="tile" style="margin:0"><canvas id="t11"></canvas><figcaption>1:1（大人数）</figcaption></figure>
       </div>
       <p class="hint">会議ツールはタイルの形に合わせて背景の左右を切り落とします。3つとも情報が残っているか確認してください。</p>
+      <div class="legibility" id="legibility">
+        <div class="warn" id="legBad" hidden></div>
+        <div class="note" id="legWeak" hidden></div>
+      </div>
     </div>
 
     <div class="card">
@@ -716,6 +747,12 @@ const QR = (() => {
     layout: 'A', marginMode: 'safe',
     font: 'gothic', textColor: '#ffffff', accentColor: '#c9a227', theme: 'dark',
     panelOn: true, shadowOn: true,
+    // 文字の読みやすさ
+    autoColor: true,          // 背景に合わせて文字色を自動で切り替える
+    outline: 'none',          // 縁取り: none / thin / thick
+    textSize: 'large',        // 補助情報の大きさ: standard / large / xlarge
+    // ブロックごとのパネル（auto = レイアウトの既定に従う / on / off）
+    blockPanel: { main: 'auto', sub: 'auto', catch: 'auto', qr: 'auto' },
     adj: { main: { x:0,y:0,s:100 }, sub: { x:0,y:0,s:100 }, catch: { x:0,y:0,s:100 },
            qr: { x:0,y:0,s:100 }, mascot: { x:0,y:0,s:100 } },
     size: '1920x1080', fmt: 'png', quality: 88,
@@ -730,6 +767,111 @@ const QR = (() => {
   // 半透明パネルの余白（高さの 2.8%）が幅に占める割合 ≒ 0.0158 を上乗せし、
   // 正方形タイルに切り抜かれてもパネルの端まで残るようにする
   const MARGIN = { safe: CUT_SQUARE + 0.020, wide: 0.06 };
+
+  /* ================= 文字の大きさの段階 =================
+     補助情報（ふりがな・肩書・資格・連絡先）は小さいタイルで真っ先に読めなくなる。
+     「大きめ」「特大」では、レイアウトの既定より小さい場合だけ下限まで引き上げる。 */
+  const AUX_KEYS = ['qual', 'namesub', 'title', 'contact'];
+  const TEXT_LEVELS = {
+    standard: { aux: 0,     all: 0,     weight: 0   },   // v1.4 までと同じ
+    large:    { aux: 0.030, all: 0,     weight: 600 },   // 2×2表示で約15px
+    xlarge:   { aux: 0.034, all: 0.034, weight: 600 },   // 3×3表示でも約12px（全文字）
+  };
+  const textLevel = () => TEXT_LEVELS[S.textSize] || TEXT_LEVELS.large;
+  function levelSize(key, size) {
+    const lv = textLevel();
+    let v = Math.max(size, lv.all);
+    if (AUX_KEYS.includes(key)) v = Math.max(v, lv.aux);
+    return v;
+  }
+  function levelWeight(key, weight) {
+    const lv = textLevel();
+    return (AUX_KEYS.includes(key) && lv.weight) ? Math.max(weight, lv.weight) : weight;
+  }
+
+  /* ================= 背景に合わせた文字色 =================
+     コントラスト比は WCAG 2.x の定義（相対輝度）で計算する。 */
+  const LIN = new Float32Array(256);
+  for (let i = 0; i < 256; i++) { const v = i / 255; LIN[i] = v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+  const relLum = (r, g, b) => 0.2126 * LIN[r] + 0.7152 * LIN[g] + 0.0722 * LIN[b];
+  function hexLum(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    return relLum((n >> 16) & 255, (n >> 8) & 255, n & 255);
+  }
+  const contrast = (a, b) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+
+  // 指定範囲の背景色を間引いて読み取る（RGB を並べた配列。読めなければ null）
+  function sampleRGB(ctx, x, y, w, h) {
+    const CW = ctx.canvas.width, CH = ctx.canvas.height;
+    const x0 = Math.max(0, Math.floor(x)), y0 = Math.max(0, Math.floor(y));
+    const x1 = Math.min(CW, Math.ceil(x + w)), y1 = Math.min(CH, Math.ceil(y + h));
+    if (x1 - x0 < 1 || y1 - y0 < 1) return null;
+    let data;
+    try { data = ctx.getImageData(x0, y0, x1 - x0, y1 - y0).data; } catch { return null; }
+    const n = (x1 - x0) * (y1 - y0), step = Math.max(1, Math.floor(n / 2500));
+    const out = [];
+    for (let i = 0; i < n; i += step) out.push(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]);
+    return out;
+  }
+  // 背景に濃さ alpha のパネルを重ねたときの明るさ（alpha = 0 ならパネルなし）
+  function lumsUnder(rgb, alpha) {
+    const n = parseInt(S.panelColor.slice(1), 16);
+    const pr = (n >> 16) & 255, pg = (n >> 8) & 255, pb = n & 255;
+    const out = [];
+    for (let i = 0; i < rgb.length; i += 3) {
+      out.push(relLum(Math.round(rgb[i] * (1 - alpha) + pr * alpha),
+                      Math.round(rgb[i + 1] * (1 - alpha) + pg * alpha),
+                      Math.round(rgb[i + 2] * (1 - alpha) + pb * alpha)));
+    }
+    return out;
+  }
+  // パネルのあるブロックは、文字色を変える前にまずパネルを濃くして読みやすくする
+  // （デザインの意図＝パネルの上の文字色を保つため）。濃くしても届かなければ元の濃さに戻す
+  function strengthenPanel(rgb, alpha) {
+    for (let a = alpha; a <= 0.9 + 1e-9; a += 0.04) {
+      if (contrastScore(S.textColor, lumsUnder(rgb, a)) >= 4.5) return a;
+    }
+    return alpha;
+  }
+  // 背景のうち読みにくい側の 1 割で評価する（平均だと明暗が混ざった背景を見逃すため）
+  function contrastScore(hex, lums) {
+    const L = hexLum(hex);
+    const rs = lums.map((l) => contrast(L, l)).sort((a, b) => a - b);
+    return rs[Math.floor(rs.length * 0.1)];
+  }
+  const DARK_TEXT = '#16202b', LIGHT_TEXT = '#ffffff';
+  function pickColors(lums) {
+    if (!S.autoColor || !lums || !lums.length) return { text: S.textColor, accent: S.accentColor };
+    let text = S.textColor;
+    const sb = contrastScore(text, lums);
+    if (sb < 4.5) {                       // 通常文字の基準 4.5:1 に届かないときだけ切り替える
+      const alt = isLight(text) ? DARK_TEXT : LIGHT_TEXT;
+      if (contrastScore(alt, lums) > sb) text = alt;
+    }
+    // アクセント色（資格名など）は大きい文字の基準 3:1 を下回るなら文字色に合わせる
+    const accent = contrastScore(S.accentColor, lums) >= 3 ? S.accentColor : text;
+    return { text, accent };
+  }
+
+  // 縁取りの太さ（文字の大きさに対する比率）
+  const OUTLINE = { none: 0, thin: 0.09, thick: 0.18 };
+  function paintText(ctx, str, x, y, fs, color) {
+    const ow = (OUTLINE[S.outline] || 0) * fs;
+    if (ow > 0) {
+      ctx.lineJoin = 'round'; ctx.miterLimit = 2; ctx.lineWidth = ow;
+      ctx.strokeStyle = isLight(color) ? 'rgba(17,24,32,0.95)' : 'rgba(255,255,255,0.95)';
+      ctx.strokeText(str, x, y);
+      ctx.save();
+      ctx.shadowColor = 'transparent';     // 影は縁取りに付いたので、塗りには付けない
+      ctx.fillStyle = color; ctx.fillText(str, x, y);
+      ctx.restore();
+      return;
+    }
+    ctx.fillStyle = color; ctx.fillText(str, x, y);
+  }
+
+  // 描画した文字の大きさ（画像の高さに対する比率）。読みやすさの判定に使う
+  let sizeLog = [];
 
   /* ================= レイアウト定義 ================= */
   // item: {t:'text'|'wrap'|'logo'|'rule'|'qr', key, size(高さ比), weight, color, gap}
@@ -875,15 +1017,16 @@ const QR = (() => {
       if (it.t === 'text') {
         const v = (S.text[it.key] || '').trim();
         if (!v) continue;
-        const fs = it.size * H * scale;
-        ctx.font = `${it.weight} ${fs}px ${fam}`;
+        const fs = levelSize(it.key, it.size) * H * scale;
+        const weight = levelWeight(it.key, it.weight);
+        ctx.font = `${weight} ${fs}px ${fam}`;
         const w = ctx.measureText(v).width;
-        parts.push({ it, kind:'text', value:v, fs, w, h: fs * 1.18, gap });
+        parts.push({ it, kind:'text', value:v, fs, w, h: fs * 1.18, gap, weight });
         maxW = Math.max(maxW, w); total += fs * 1.18 + gap;
       } else if (it.t === 'wrap') {
         const v = (S.text[it.key] || '').trim();
         if (!v) continue;
-        const fs = it.size * H * scale;
+        const fs = levelSize(it.key, it.size) * H * scale;
         const weight = it.weight || 400, lh = it.lh || 1.45;
         ctx.font = `${weight} ${fs}px ${fam}`;
         let ls = wrapLines(ctx, v, it.maxW * W);
@@ -1020,9 +1163,17 @@ const QR = (() => {
     left = Math.max(-mm.w * (1 - keep), Math.min(W - mm.w * keep, left));
     y = Math.max(-mm.h * (1 - keep), Math.min(H - mm.h * keep, y));
 
-    if (block.panel && S.panelOn && S.panelOpacity > 0) {
+    const bp = S.blockPanel[block.id] || 'auto';
+    const panelOn = (bp === 'on' ? true : bp === 'off' ? false : (block.panel && S.panelOn))
+                    && S.panelOpacity > 0;
+    const hasText = mm.parts.some((p) => p.kind === 'text' || p.kind === 'wrap');
+    // 文字を置く範囲の背景（パネルを敷く前）を読み取っておく
+    const bgRGB = (hasText && S.autoColor) ? sampleRGB(ctx, left, y, mm.w, mm.h) : null;
+    let panelAlpha = S.panelOpacity / 100;
+    if (panelOn) {
+      if (bgRGB && bgRGB.length) panelAlpha = strengthenPanel(bgRGB, panelAlpha);
       const p = H * 0.028;
-      ctx.fillStyle = rgba(S.panelColor, S.panelOpacity / 100);
+      ctx.fillStyle = rgba(S.panelColor, panelAlpha);
       roundRect(ctx, left - p, y - p, mm.w + p * 2, mm.h + p * 2, H * 0.014);
       ctx.fill();
     }
@@ -1034,23 +1185,27 @@ const QR = (() => {
     ctx.textAlign = block.align === 'right' ? 'right' : block.align === 'center' ? 'center' : 'left';
     const tx = block.align === 'right' ? left + mm.w : block.align === 'center' ? left + mm.w / 2 : left;
 
+    // パネルを重ねた後の明るさから、読みやすい文字色を決める
+    const colors = bgRGB && bgRGB.length
+      ? pickColors(lumsUnder(bgRGB, panelOn ? panelAlpha : 0))
+      : { text: S.textColor, accent: S.accentColor };
+
     for (const p of mm.parts) {
-      const color = p.it.color === ACC ? S.accentColor : (p.it.color || S.textColor);
+      const color = p.it.color === ACC ? colors.accent : (p.it.color || colors.text);
+      if (p.kind === 'text' || p.kind === 'wrap') sizeLog.push({ key: p.it.key, ratio: p.fs / H });
       if (S.shadowOn && (p.kind === 'text' || p.kind === 'wrap')) {
         // 明るい文字には暗い影、暗い文字には明るい影をつける
-        ctx.shadowColor = isLight(S.textColor) ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.6)';
+        ctx.shadowColor = isLight(color) ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.6)';
         ctx.shadowBlur = H * 0.006; ctx.shadowOffsetY = H * 0.002;
       } else { ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0; }
 
       if (p.kind === 'text') {
-        ctx.font = `${p.it.weight} ${p.fs}px ${fam}`;
-        ctx.fillStyle = color;
-        ctx.fillText(p.value, tx, y + p.fs * 0.09);
+        ctx.font = `${p.weight} ${p.fs}px ${fam}`;
+        paintText(ctx, p.value, tx, y + p.fs * 0.09, p.fs, color);
       } else if (p.kind === 'wrap') {
         ctx.font = `${p.weight} ${p.fs}px ${fam}`;
-        ctx.fillStyle = color;
         const inset = p.fs * (p.lh - 1) * 0.5;   // 行送りの余白を上下に振り分ける
-        p.lines.forEach((ln, i) => ctx.fillText(ln, tx, y + i * p.fs * p.lh + inset));
+        p.lines.forEach((ln, i) => paintText(ctx, ln, tx, y + i * p.fs * p.lh + inset, p.fs, color));
       } else if (p.kind === 'logo') {
         ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
         const lx = block.align === 'right' ? tx - p.w : block.align === 'center' ? tx - p.w / 2 : tx;
@@ -1081,6 +1236,7 @@ const QR = (() => {
   // 出力画像そのものを描く（セーフゾーン等の補助表示は含まない）
   function renderTo(ctx, W, H) {
     const boxes = [];
+    sizeLog = [];
     ctx.clearRect(0, 0, W, H);
     drawBackground(ctx, W, H);
     const def = layoutDef(S.layout, MARGIN[S.marginMode]);
@@ -1180,6 +1336,7 @@ const QR = (() => {
       pctx.restore();
       drawOverlays(pctx, PW, PH);
       drawTiles();
+      updateLegibility();
       updateQrHint();
       scheduleSizeEstimate();
       saveLocal();
@@ -1235,6 +1392,37 @@ const QR = (() => {
     const nm = sanitize(S.text.name) || sanitize(S.text.company) || 'background';
     saveBlob(blob, `bg_${S.layout}_${S.size}_${nm}.${S.fmt === 'png' ? 'png' : 'jpg'}`);
   });
+
+  /* ================= 読みやすさの注意 =================
+     1080p の画面にタイルを 2×2 / 3×3 で並べたときの文字の高さを見積もり、
+     約12px を下回る要素を知らせる。タイルの大きさは目安（実際は画面や人数で変わる）。 */
+  const LEG_LABELS = { company:'社名', qual:'資格名', name:'氏名', namesub:'ふりがな',
+                       title:'肩書', contact:'連絡先', catch:'キャッチコピー' };
+  const REF_H = 1080, MIN_PX = 12;
+  function updateLegibility() {
+    const min = {};
+    for (const { key, ratio } of sizeLog) min[key] = Math.min(min[key] ?? Infinity, ratio);
+    const bad = [], weak = [];
+    for (const [key, r] of Object.entries(min)) {
+      const px2 = r * REF_H / 2, px3 = r * REF_H / 3;
+      if (px2 < MIN_PX) bad.push([key, px2]);
+      else if (px3 < MIN_PX) weak.push([key, px3]);
+    }
+    const names = (list) => list.map(([k]) => LEG_LABELS[k] || k).join('・');
+    const smallest = (list) => Math.round(Math.min(...list.map(([, px]) => px)));
+    const fix = S.textSize === 'xlarge'
+      ? '「6. 微調整」でそのブロックの大きさを上げてください。'
+      : '「3. 文字の内容」の文字の大きさを上げてください。';
+    const note = '（1080pの画面にタイルを並べた場合の目安です）';
+    const elBad = $('legBad'), elWeak = $('legWeak');
+    elBad.hidden = !bad.length;
+    elBad.textContent = bad.length
+      ? `⚠ ${names(bad)}は、4人程度の会議（2×2表示）でも約${smallest(bad)}pxと小さく、読みにくくなります。${fix}${note}` : '';
+    elWeak.hidden = !weak.length;
+    elWeak.textContent = weak.length
+      ? `${names(weak)}は、9人程度の会議（3×3表示）では約${smallest(weak)}pxになり、読みにくくなります。`
+        + (S.textSize === 'xlarge' ? '' : '大人数の会議で使う場合は、文字の大きさを「特大」にしてください。') + note : '';
+  }
 
   /* ================= QRの状態表示 ================= */
   function updateQrHint() {
@@ -1394,7 +1582,7 @@ const QR = (() => {
                            ['overlayColor','overlayColor'],['panelColor','panelColor']]) {
     $(id).addEventListener('input', (e) => { S[key] = e.target.value; render(); });
   }
-  for (const [id, key] of [['gradient','gradient'],['panelOn','panelOn'],['shadowOn','shadowOn'],['fillBlur','fillBlur'],['mascotFlip','mascotFlip'],
+  for (const [id, key] of [['gradient','gradient'],['panelOn','panelOn'],['shadowOn','shadowOn'],['fillBlur','fillBlur'],['autoColor','autoColor'],['mascotFlip','mascotFlip'],
                            ['showSafe','showSafe'],['showPerson','showPerson'],['showMirror','showMirror']]) {
     $(id).addEventListener('change', (e) => {
       S[key] = e.target.checked;
@@ -1403,6 +1591,20 @@ const QR = (() => {
       render();
     });
   }
+
+  // 文字の大きさ・縁取り
+  $('textSizeSeg').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-size]'); if (!b) return;
+    S.textSize = b.dataset.size; syncFormFromState(); render();
+  });
+  $('outlineSeg').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-outline]'); if (!b) return;
+    S.outline = b.dataset.outline; syncFormFromState(); render();
+  });
+  $('blockPanel').addEventListener('change', (e) => {
+    const id = $('blockSel').value;
+    if (id in S.blockPanel) { S.blockPanel[id] = e.target.value; render(); }
+  });
 
   // 配色プリセット
   const THEMES = {
@@ -1464,6 +1666,9 @@ const QR = (() => {
     for (const b of $('placeGrid').querySelectorAll('button')) {
       b.setAttribute('aria-pressed', String(b.dataset.place === S.place[id]));
     }
+    const bp = $('blockPanel');
+    bp.disabled = !(id in S.blockPanel);               // マスコットにはパネルを敷かない
+    bp.value = S.blockPanel[id] || 'auto';
     const a = S.adj[id];
     $('adjX').value = a.x; $('adjXV').textContent = a.x + '%';
     $('adjY').value = a.y; $('adjYV').textContent = a.y + '%';
@@ -1473,10 +1678,12 @@ const QR = (() => {
   $('adjReset').addEventListener('click', () => {
     const id = $('blockSel').value;
     S.adj[id] = { x:0, y:0, s:100 }; S.place[id] = null;
+    if (id in S.blockPanel) S.blockPanel[id] = 'auto';
     syncFormFromState(); render();
   });
   $('adjResetAll').addEventListener('click', () => {
     for (const k of Object.keys(S.adj)) { S.adj[k] = { x:0, y:0, s:100 }; S.place[k] = null; }
+    for (const k of Object.keys(S.blockPanel)) S.blockPanel[k] = 'auto';
     syncFormFromState(); render();
   });
 
@@ -1539,6 +1746,7 @@ const QR = (() => {
       qrEc:S.qrEc, qrSize:S.qrSize, layout:S.layout, marginMode:S.marginMode,
       font:S.font, textColor:S.textColor, accentColor:S.accentColor,
       panelOn:S.panelOn, shadowOn:S.shadowOn, adj:S.adj, size:S.size, fmt:S.fmt, quality:S.quality,
+      autoColor:S.autoColor, outline:S.outline, textSize:S.textSize, blockPanel:S.blockPanel,
       text: t, logoSrc: S.logoSrc, mascotSrc: S.mascotSrc, baseSrc: withBase ? S.baseSrc : null,
     };
   }
@@ -1614,10 +1822,12 @@ const QR = (() => {
   function applyState(d, keepPersonal) {
     const keys = ['fit','zoom','offX','offY','dim','blur','fillBlur','bgColor','gradient','logoSize',
                   'mascotSize','mascotFlip','overlayColor','panelColor','panelOpacity','theme','qrEc','qrSize',
-                  'layout','marginMode','font','textColor','accentColor','panelOn','shadowOn','size','fmt','quality'];
+                  'layout','marginMode','font','textColor','accentColor','panelOn','shadowOn','size','fmt','quality',
+                  'autoColor','outline','textSize'];
     for (const k of keys) if (d[k] !== undefined) S[k] = d[k];
     if (d.adj) for (const k of Object.keys(S.adj)) if (d.adj[k]) S.adj[k] = Object.assign({ x:0,y:0,s:100 }, d.adj[k]);
     if (d.place) for (const k of Object.keys(S.place)) if (d.place[k] !== undefined) S.place[k] = d.place[k];
+    if (d.blockPanel) for (const k of Object.keys(S.blockPanel)) if (d.blockPanel[k]) S.blockPanel[k] = d.blockPanel[k];
     // v1.3 以前のテンプレートはマスコットの置き場所を mascotPos で持っていた
     if (d.mascotPos && !(d.place && d.place.mascot)) S.place.mascot = d.mascotPos;
     if (d.text) for (const [k, v] of Object.entries(d.text)) {
@@ -1652,6 +1862,18 @@ const QR = (() => {
     }
     $('gradient').checked = S.gradient; $('panelOn').checked = S.panelOn; $('shadowOn').checked = S.shadowOn;
     $('fillBlur').checked = S.fillBlur;
+    $('autoColor').checked = S.autoColor;
+    for (const b of $('outlineSeg').querySelectorAll('button')) {
+      b.setAttribute('aria-pressed', String(b.dataset.outline === S.outline));
+    }
+    for (const b of $('textSizeSeg').querySelectorAll('button')) {
+      b.setAttribute('aria-pressed', String(b.dataset.size === S.textSize));
+    }
+    $('textSizeHint').textContent = {
+      standard: '従来の大きさです。4人程度の会議（2×2表示）でも、ふりがな・連絡先は約11pxと読みにくくなります。',
+      large:    '4人程度の会議（2×2表示）でも読める大きさです（約16px）。あわせて少し太字にします。',
+      xlarge:   '9人程度の会議（3×3表示）でも読める大きさです（約12px）。社名・キャッチコピーも同じ大きさまで引き上げます。',
+    }[S.textSize] || '';
     $('mascotFlip').checked = S.mascotFlip;
     for (const b of $('mascotPos').querySelectorAll('button')) {
       b.setAttribute('aria-pressed', String(b.dataset.pos === (S.place.mascot || 'bl')));
@@ -1678,11 +1900,13 @@ const QR = (() => {
     saveTimer = setTimeout(() => {
       try {
         const d = { _format:'meeting-bg-template', _version:1, text:S.text, adj:S.adj, place:S.place,
+                    blockPanel:S.blockPanel,
                     logoSrc:S.logoSrc, mascotSrc:S.mascotSrc,
                     _mode: currentMode, _embeddedStamp: S._embeddedStamp || null };
         for (const k of ['fit','zoom','offX','offY','dim','blur','fillBlur','bgColor','gradient','logoSize',
                   'mascotSize','mascotFlip','overlayColor','panelColor','panelOpacity','theme','qrEc','qrSize',
-                         'layout','marginMode','font','textColor','accentColor','panelOn','shadowOn','size','fmt','quality']) d[k] = S[k];
+                         'layout','marginMode','font','textColor','accentColor','panelOn','shadowOn','size','fmt','quality',
+                  'autoColor','outline','textSize']) d[k] = S[k];
         localStorage.setItem(LS_KEY, JSON.stringify(d));   // 背景画像は容量が大きいため保存しない
       } catch { /* 容量超過・プライベートモードなどでは黙って諦める */ }
     }, 800);
@@ -1704,6 +1928,7 @@ const QR = (() => {
   function mergeTemplate(base, top, keepPersonal) {
     const out = Object.assign({}, base, top);
     out.place = Object.assign({}, base.place || {}, top.place || {});
+    out.blockPanel = Object.assign({}, base.blockPanel || {}, top.blockPanel || {});
     out.text = Object.assign({}, base.text || {});
     for (const [k, v] of Object.entries(top.text || {})) {
       if (keepPersonal && PERSONAL.includes(k)) continue;
